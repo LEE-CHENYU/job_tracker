@@ -2,17 +2,21 @@
 """Job tracker menubar — generic across all agents / projects.
 
 Reads state files from ~/job_tracker/state/*.json and renders them. Auto-
-refreshes every 30s. Click "Refresh" to force update.
+refreshes every 30s.
 
-Each registered job shows:
-  - status emoji + title + progress %
-  - submenu with:
-      * purpose (rich multi-line context — why this is running)
-      * progress detail (current/total, rate, ETA)
-      * arbitrary details / telemetry from the agent
-      * actions: Open log, Cancel (if cancel_cmd set), Remove
+Layout per job (top-level items in the dropdown):
+  • Status emoji + title + progress %
+  • Progress: <current> / <total> <unit>
+  • ETA: ...
+  • Rate: ...
+  • detail lines (free-form, from agent)
+  Submenus:
+    • Purpose ›    — multi-line rich context (why the job is running)
+    • Telemetry ›  — full dict
+    • Meta ›       — started/updated/agent/pid/tags
+    • Actions ›    — Open log / Cancel / Remove
 
-Job state schema documented in job_tracker/__init__.py.
+Multiple jobs are separated by a divider line.
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Allow running as either `python ~/job_tracker/menubar.py` or `python -m job_tracker.menubar`
+# Allow running as `python ~/job_tracker/menubar.py` OR `python -m job_tracker.menubar`
 HERE = Path(__file__).resolve().parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
@@ -33,7 +37,9 @@ import rumps
 STATE_DIR = HERE / "state"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 REFRESH_SEC = 30
-ICON_DEFAULT = "🛠"
+# Plain ASCII title — renders reliably across dark/light/transparent menu bars.
+# Emoji icons sometimes show as empty space on certain macOS configs.
+DEFAULT_TITLE = "Jobs"
 
 STATUS_EMOJI = {
     "running": "🟢", "paused": "🟡",
@@ -89,7 +95,7 @@ def _read_jobs() -> list[dict]:
                 "id": f.stem, "title": f.stem, "status": "error",
                 "details": [f"unreadable: {exc}"], "_path": str(f),
             })
-    # Order: running first, then paused, then done, then failed
+    # Order: running first, then paused, then done, then failed/error
     order = {"running": 0, "paused": 1, "done": 2, "failed": 3, "error": 4}
     out.sort(key=lambda d: (order.get(d.get("status", ""), 5), d.get("title", "")))
     return out
@@ -104,113 +110,156 @@ def _progress_pct(job: dict) -> float:
     return min(100.0, 100.0 * cur / tot)
 
 
-def _build_job_section(job: dict) -> rumps.MenuItem:
-    title = job.get("title", job.get("id", "?"))
-    status = job.get("status", "unknown")
-    emoji = STATUS_EMOJI.get(status, "⚪️")
-    pct = _progress_pct(job)
-    header = f"{emoji} {title}  {pct:.1f}%"
-    section = rumps.MenuItem(header)
+def _open_log_cb(path):
+    def cb(_):
+        subprocess.run(["open", "-a", "Console", path])
+    return cb
 
-    purpose = job.get("purpose")
-    if purpose:
-        section.add(rumps.MenuItem("— Purpose —"))
-        for line in str(purpose).split("\n"):
-            line = line.strip()
-            if line:
-                section.add(rumps.MenuItem("  " + line))
-        section.add(rumps.separator)
 
-    prog = job.get("progress") or {}
-    cur = prog.get("current")
-    tot = prog.get("total")
-    unit = prog.get("unit", "items")
-    rate = prog.get("rate_per_sec")
-    if cur is not None and tot:
-        section.add(rumps.MenuItem(f"Progress: {cur:,} / {tot:,} {unit}"))
-        remaining = max(0, tot - cur)
-        section.add(rumps.MenuItem(f"ETA: {_human_eta(remaining, rate)}"))
-    if rate is not None:
-        section.add(rumps.MenuItem(f"Rate: {rate:.3f} {prog.get('rate_unit', unit + '/sec')}"))
+def _cancel_cb(cmd):
+    def cb(_):
+        subprocess.run(cmd)
+    return cb
 
-    for d in job.get("details", []) or []:
-        section.add(rumps.MenuItem(str(d)))
 
-    telemetry = job.get("telemetry") or {}
-    if telemetry:
-        section.add(rumps.separator)
-        section.add(rumps.MenuItem("— Telemetry —"))
-        for k, v in telemetry.items():
-            section.add(rumps.MenuItem(f"  {k}: {v}"))
-
-    section.add(rumps.separator)
-    section.add(rumps.MenuItem(f"Started: {_format_age(_parse_iso(job.get('started_at')))}"))
-    section.add(rumps.MenuItem(f"Updated: {_format_age(_parse_iso(job.get('updated_at')))}"))
-    if job.get("agent"):
-        section.add(rumps.MenuItem(f"Agent: {job['agent']}"))
-    if job.get("pid"):
-        section.add(rumps.MenuItem(f"PID: {job['pid']}"))
-    if job.get("tags"):
-        section.add(rumps.MenuItem(f"Tags: {', '.join(job['tags'])}"))
-
-    # Actions
-    section.add(rumps.separator)
-    log_path = job.get("log_path")
-    if log_path and Path(log_path).exists():
-        section.add(rumps.MenuItem(
-            "Open log",
-            callback=lambda _, p=log_path: subprocess.run(["open", "-a", "Console", p]),
-        ))
-    cancel_cmd = job.get("cancel_cmd")
-    if cancel_cmd:
-        section.add(rumps.MenuItem(
-            "Cancel job",
-            callback=lambda _, cmd=cancel_cmd: subprocess.run(cmd),
-        ))
-    section.add(rumps.MenuItem(
-        "Remove from tracker",
-        callback=lambda _, p=job.get("_path"): Path(p).unlink(missing_ok=True),
-    ))
-    return section
+def _remove_cb(path):
+    def cb(_):
+        try:
+            Path(path).unlink()
+        except FileNotFoundError:
+            pass
+    return cb
 
 
 class JobTrackerApp(rumps.App):
     def __init__(self):
-        super().__init__(ICON_DEFAULT, quit_button=None)
+        super().__init__(DEFAULT_TITLE, title=DEFAULT_TITLE, quit_button=None)
         rumps.Timer(self._auto_refresh, REFRESH_SEC).start()
         self._rebuild()
 
     def _rebuild(self):
+        # Wipe current menu items
         for key in list(self.menu.keys()):
             del self.menu[key]
+
         jobs = _read_jobs()
         if not jobs:
             self.menu.add(rumps.MenuItem("(no jobs registered)"))
             self.menu.add(rumps.MenuItem(
-                "Help: write state file to ~/job_tracker/state/",
-                callback=None,
+                "Drop JSON files in ~/job_tracker/state/"
             ))
-        else:
-            for job in jobs:
-                self.menu.add(_build_job_section(job))
+            self.menu.add(rumps.separator)
+            self.menu.add(rumps.MenuItem("Refresh", callback=self._on_refresh))
+            self.menu.add(rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application()))
+            self.title = DEFAULT_TITLE
+            return
+
+        for i, job in enumerate(jobs):
+            self._add_job_inline(job)
+            if i < len(jobs) - 1:
                 self.menu.add(rumps.separator)
-        self.menu.add(rumps.MenuItem("Refresh", callback=self._on_refresh))
+
         self.menu.add(rumps.separator)
+        self.menu.add(rumps.MenuItem("Refresh", callback=self._on_refresh))
         self.menu.add(rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application()))
 
         # Title bar: show the most-progressed running job's %
         running = [j for j in jobs if j.get("status") == "running"]
         if running:
             top = max(running, key=_progress_pct)
-            self.title = f"{ICON_DEFAULT} {_progress_pct(top):.0f}%"
+            self.title = f"{DEFAULT_TITLE} {_progress_pct(top):.0f}%"
         else:
-            self.title = ICON_DEFAULT
+            self.title = DEFAULT_TITLE
+
+    def _add_job_inline(self, job: dict):
+        title = job.get("title", job.get("id", "?"))
+        status = job.get("status", "unknown")
+        emoji = STATUS_EMOJI.get(status, "⚪️")
+        pct = _progress_pct(job)
+
+        # Header (non-interactive label)
+        header = rumps.MenuItem(f"{emoji} {title}  {pct:.1f}%")
+        self.menu.add(header)
+
+        # Inline metrics
+        prog = job.get("progress") or {}
+        cur = prog.get("current")
+        tot = prog.get("total")
+        unit = prog.get("unit", "items")
+        rate = prog.get("rate_per_sec")
+        if cur is not None and tot:
+            self.menu.add(rumps.MenuItem(f"  Progress: {cur:,} / {tot:,} {unit}"))
+            remaining = max(0, tot - cur)
+            self.menu.add(rumps.MenuItem(f"  ETA: {_human_eta(remaining, rate)}"))
+        if rate is not None:
+            rate_unit = prog.get("rate_unit") or f"{unit}/sec"
+            self.menu.add(rumps.MenuItem(f"  Rate: {rate:.3f} {rate_unit}"))
+
+        for d in (job.get("details") or []):
+            self.menu.add(rumps.MenuItem(f"  {d}"))
+
+        # Purpose / Telemetry / Meta / Actions go into submenus
+        purpose = job.get("purpose")
+        if purpose:
+            sub = rumps.MenuItem("  Purpose ›")
+            for line in str(purpose).split("\n"):
+                line = line.strip()
+                if line:
+                    # Wrap long lines so the submenu doesn't grow absurdly wide
+                    for chunk in _wrap(line, 80):
+                        sub.add(rumps.MenuItem(chunk))
+            self.menu.add(sub)
+
+        telemetry = job.get("telemetry") or {}
+        if telemetry:
+            sub = rumps.MenuItem("  Telemetry ›")
+            for k, v in telemetry.items():
+                sub.add(rumps.MenuItem(f"{k}: {v}"))
+            self.menu.add(sub)
+
+        # Meta submenu
+        meta_sub = rumps.MenuItem("  Meta ›")
+        meta_sub.add(rumps.MenuItem(f"Started: {_format_age(_parse_iso(job.get('started_at')))}"))
+        meta_sub.add(rumps.MenuItem(f"Updated: {_format_age(_parse_iso(job.get('updated_at')))}"))
+        if job.get("agent"):
+            meta_sub.add(rumps.MenuItem(f"Agent: {job['agent']}"))
+        if job.get("pid"):
+            meta_sub.add(rumps.MenuItem(f"PID: {job['pid']}"))
+        if job.get("tags"):
+            meta_sub.add(rumps.MenuItem(f"Tags: {', '.join(job['tags'])}"))
+        self.menu.add(meta_sub)
+
+        # Actions submenu
+        actions_sub = rumps.MenuItem("  Actions ›")
+        log_path = job.get("log_path")
+        if log_path and Path(log_path).exists():
+            actions_sub.add(rumps.MenuItem("Open log", callback=_open_log_cb(log_path)))
+        if job.get("cancel_cmd"):
+            actions_sub.add(rumps.MenuItem("Cancel job", callback=_cancel_cb(job["cancel_cmd"])))
+        actions_sub.add(rumps.MenuItem("Remove from tracker",
+                                         callback=_remove_cb(job.get("_path"))))
+        self.menu.add(actions_sub)
 
     def _on_refresh(self, _):
         self._rebuild()
 
     def _auto_refresh(self, _timer):
         self._rebuild()
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    """Crude word-wrap so a long purpose line doesn't blow out the submenu width."""
+    out = []
+    while len(text) > width:
+        # Break on last space before the cutoff
+        cut = text.rfind(" ", 0, width)
+        if cut == -1:
+            cut = width
+        out.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    if text:
+        out.append(text)
+    return out
 
 
 def main() -> int:
