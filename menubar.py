@@ -38,6 +38,7 @@ STATE_DIR.mkdir(parents=True, exist_ok=True)
 REFRESH_SEC = 30
 DEFAULT_TITLE = "Jobs"
 PURPOSE_WRAP_WIDTH = 70
+DETAIL_WRAP_WIDTH = 90  # detail / telemetry lines (longer than purpose)
 
 STATUS_EMOJI = {
     "running": "🟢", "paused": "🟡",
@@ -84,20 +85,44 @@ def _format_age(ts):
 
 
 def _wrap(text, width):
+    """Word-wrap; for unbreakable strings (e.g. URLs), also accept
+    breaks at /, ?, &, = before hard-cutting at width."""
     out = []
     for paragraph in str(text).split("\n"):
         line = paragraph.strip()
         if not line:
             continue
         while len(line) > width:
+            # 1) Try a regular space break first
             cut = line.rfind(" ", 0, width)
-            if cut == -1:
-                cut = width
+            if cut == -1 or cut < width // 2:
+                # 2) Fall back to URL-friendly break chars (keeps long
+                #    URLs readable instead of mid-character cuts)
+                best = -1
+                for ch in ("/", "?", "&", "=", ":", ",", ";"):
+                    pos = line.rfind(ch, 0, width)
+                    if pos > best:
+                        best = pos
+                if best > width // 2:
+                    cut = best + 1  # break after the delimiter
+                elif cut == -1:
+                    # 3) Hard-cut at width
+                    cut = width
             out.append(line[:cut].rstrip())
             line = line[cut:].lstrip()
         if line:
             out.append(line)
     return out
+
+
+def _emit_wrapped(items, text, first_prefix="  ", cont_prefix="    ",
+                   width=DETAIL_WRAP_WIDTH):
+    """Append `text` to `items` as one or more MenuItems with word-wrap.
+    First chunk uses `first_prefix`, subsequent use `cont_prefix`."""
+    chunks = _wrap(text, width)
+    for i, c in enumerate(chunks):
+        prefix = first_prefix if i == 0 else cont_prefix
+        items.append(rumps.MenuItem(f"{prefix}{c}"))
 
 
 def _read_jobs():
@@ -219,6 +244,7 @@ class JobTrackerApp(rumps.App):
         if purpose:
             for chunk in _wrap(purpose, PURPOSE_WRAP_WIDTH):
                 items.append(rumps.MenuItem(f"  · {chunk}"))
+        # End of purpose section
 
         # Progress / ETA / Rate
         prog = job.get("progress") or {}
@@ -235,17 +261,18 @@ class JobTrackerApp(rumps.App):
             rate_unit = prog.get("rate_unit") or f"{unit}/sec"
             items.append(rumps.MenuItem(f"  Rate: {rate:.3f} {rate_unit}"))
 
-        # Free-form detail lines from the agent
+        # Free-form detail lines from the agent (word-wrapped)
         for d in (job.get("details") or []):
-            items.append(rumps.MenuItem(f"  {d}"))
+            _emit_wrapped(items, str(d), first_prefix="  ", cont_prefix="    ")
 
-        # Telemetry (compact inline)
+        # Telemetry (compact inline, word-wrapped)
         telemetry = job.get("telemetry") or {}
         if telemetry:
             for k, v in telemetry.items():
                 if v is None or v == "":
                     continue
-                items.append(rumps.MenuItem(f"  • {k}: {v}"))
+                _emit_wrapped(items, f"• {k}: {v}",
+                              first_prefix="  ", cont_prefix="      ")
 
         # Meta — single line if we can fit it
         meta_bits = []
