@@ -189,12 +189,18 @@ class JobTrackerApp(rumps.App):
             self.menu.add(it)
 
         jobs = _read_jobs()
-        running = [j for j in jobs if j.get("status") == "running"]
-        if running:
-            top = max(running, key=_progress_pct)
-            self.title = f"{DEFAULT_TITLE} {_progress_pct(top):.0f}%"
-        else:
+        running_n = sum(1 for j in jobs if j.get("status") == "running")
+        failed_n = sum(1 for j in jobs
+                        if j.get("status") in ("failed", "error"))
+        # Title shows running-job COUNT (not a percentage — averaging
+        # progress across unrelated jobs is meaningless). Flag failures
+        # with a ⚠ so the user notices even before opening the dropdown.
+        if running_n == 0 and failed_n == 0:
             self.title = DEFAULT_TITLE
+        elif failed_n > 0:
+            self.title = f"{DEFAULT_TITLE} {running_n} ⚠{failed_n}"
+        else:
+            self.title = f"{DEFAULT_TITLE} {running_n}"
 
     def _build_items(self):
         all_jobs = _read_jobs()
