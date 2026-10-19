@@ -29,3 +29,33 @@ class RecoveryVisibilityTests(unittest.TestCase):
  def test_recovered_no_overlay(self):
   from research_sync import recovery_activity
   self.assertIsNone(recovery_activity({'recovering':False},100))
+
+class RecoveryIntegrationTests(unittest.TestCase):
+ def test_stale_worker_archived_before_unload_and_not_restarted_early(self):
+  import json
+  from pathlib import Path
+  from tempfile import TemporaryDirectory
+  from unittest.mock import patch
+  from types import SimpleNamespace
+  import queue_watchdog as q
+  with TemporaryDirectory() as tmp:
+   root=Path(tmp); folder=root/'docs/research_screening/runner';folder.mkdir(parents=True)
+   state=root/'state';state.mkdir()
+   (folder/'control.json').write_text('{"enabled":true}')
+   (folder/'status.json').write_text('{"pid":123,"heartbeat":"1970-01-01T00:00:00+00:00","gate":"remote_request_uncertain"}')
+   calls=[]
+   def cmd(args):
+    calls.append(args)
+    if args[:2]==['launchctl','print']:
+     return SimpleNamespace(stdout=' pid = 123\n',stderr='',returncode=0)
+    if args[0]=='ps':
+     return SimpleNamespace(stdout='codex exec Read docs/research_screening/runner/worker_prompt.md',returncode=0)
+    self.assertTrue(list(state.glob('*-checkpoint.json')))
+    return SimpleNamespace(stdout='',stderr='',returncode=0)
+   with patch.object(q,'ROOT',root),patch.object(q,'STATE',state),patch.object(q,'command',cmd),patch.object(q.time,'time',return_value=6000):
+    q.run_one('screening-queue','research_screening')
+   receipt=json.loads((state/'screening-queue.json').read_text())
+   self.assertTrue(receipt['recovering'])
+   self.assertEqual(receipt['retry_at'],6060)
+   self.assertTrue(any(c[:2]==['launchctl','bootout'] for c in calls))
+   self.assertFalse(any(c[:2]==['launchctl','bootstrap'] for c in calls))
