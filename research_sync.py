@@ -13,6 +13,20 @@ def visible_by_default(status):
     return status in {'running', 'queued', 'blocked', 'needs_review', 'error'}
 
 
+def compact_title(jobs):
+    active = sum(visible_by_default(j.get('status')) for j in jobs)
+    alert = any(j.get('status') in {'failed','error'} for j in jobs)
+    return ('Jobs ' + str(active) if active else 'Jobs') + ('!' if alert else '')
+
+
+def job_heading(job):
+    status = job.get('status', 'unknown').replace('_', ' ')
+    progress = job.get('progress') or {}
+    current, total = progress.get('current'), progress.get('total')
+    count = f" — {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
+    return f"{job.get('title', job.get('id', '?'))} — {status}{count}"
+
+
 def workflow_status(results, total, verified):
     if total and verified == total:
         return 'done'

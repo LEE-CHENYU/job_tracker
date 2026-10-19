@@ -47,7 +47,7 @@ STATUS_EMOJI = {
     "needs_review": "🟡", "stale": "⚪️",
 }
 
-from research_sync import visible_by_default
+from research_sync import visible_by_default, compact_title, job_heading
 
 VISIBLE_BY_DEFAULT = {"running", "queued", "blocked", "needs_review", "error"}
 
@@ -140,7 +140,7 @@ def _read_jobs():
                 "id": f.stem, "title": f.stem, "status": "error",
                 "details": [f"unreadable: {exc}"], "_path": str(f),
             })
-    order = {"running": 0, "paused": 1, "done": 2, "failed": 3, "error": 4}
+    order = {"error": 0, "blocked": 1, "running": 2, "needs_review": 3, "queued": 4, "paused": 5, "done": 6, "failed": 7}
     out.sort(key=lambda d: (order.get(d.get("status", ""), 5), d.get("title", "")))
     return out
 
@@ -192,21 +192,7 @@ class JobTrackerApp(rumps.App):
             self.menu.add(it)
 
         jobs = _read_jobs()
-        running_n = sum(1 for j in jobs if j.get("status") == "running")
-        failed_n = sum(1 for j in jobs
-                        if j.get("status") in ("failed", "error"))
-        # Title shows running-job COUNT (not a percentage — averaging
-        # progress across unrelated jobs is meaningless). Flag failures
-        # with a ⚠ so the user notices even before opening the dropdown.
-        pending_n = sum(1 for j in jobs if j.get("status") in ("queued", "blocked", "needs_review"))
-        if pending_n:
-            self.title = f"{DEFAULT_TITLE} {running_n} running · {pending_n} pending"
-        elif running_n == 0 and failed_n == 0:
-            self.title = DEFAULT_TITLE
-        elif failed_n > 0:
-            self.title = f"{DEFAULT_TITLE} {running_n} ⚠{failed_n}"
-        else:
-            self.title = f"{DEFAULT_TITLE} {running_n}"
+        self.title = compact_title(jobs)
 
     def _build_items(self):
         all_jobs = _read_jobs()
@@ -248,7 +234,7 @@ class JobTrackerApp(rumps.App):
 
         # Header (non-interactive label). Title is naturally unique per job
         # because it contains the job's title + pct.
-        items.append(rumps.MenuItem(f"{emoji} {title}  {pct:.1f}%"))
+        items.append(rumps.MenuItem(f"{emoji} {job_heading(job)}"))
 
         # Purpose (word-wrapped). Each wrap chunk gets prefixed with the
         # job id (invisible-ish) so chunks don't collide across jobs.

@@ -257,3 +257,10 @@ Historical state is preserved with SHA-256 receipts under
 the preserved plist only when deliberately resuming those monitors.
 
 Validation: `python3 -m unittest discover -s tests -v`.
+
+Display correction: the menu-bar label stays compact (`Jobs 8`, meaning eight
+current tracked workflows, not eight running workers). Dropdown headings include
+explicit status and progress units. A 49/49 saved-response count is labelled
+`needs review`, never 100% complete. Error markers remain visible in the compact
+label. Status is derived from saved receipts/queues; worker execution remains
+unverified unless a separate live worker check establishes it.
