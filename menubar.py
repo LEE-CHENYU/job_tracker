@@ -1,27 +1,14 @@
 #!/usr/bin/env python3
-"""Job tracker menubar — flat, no-submenu rendering.
+"""Compact job menu: one status/progress row per job, details on demand.
 
-Why flat (no submenus): rumps keys items by title, so repeating
-"  Purpose ›" across jobs causes collisions and ghost items accumulate
-across refreshes. Inlining everything keeps titles naturally unique
-(they contain the job's specific values) and gives the user the full
-context on first click without any hovering.
-
-Layout per job:
-  • Status emoji + title + %
-  • Purpose (word-wrapped, indented)
-  • Progress / ETA / Rate
-  • Inline detail lines + telemetry
-  • Meta (started/updated/agent/pid/tags)
-  • Action items (Open log / Cancel / Remove) — clickable, unique titles
-Each job separated by a divider.
-
-By default only running jobs are shown; a top-level toggle reveals all.
+Each job owns a separate submenu, so common action names cannot collide across
+jobs. Full purpose, telemetry and timestamps remain in the job's JSON snapshot.
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -161,6 +148,12 @@ def _open_log_cb(path):
     return cb
 
 
+def _open_details_cb(path):
+    def cb(_):
+        subprocess.run(["open", "-a", "TextEdit", path])
+    return cb
+
+
 def _cancel_cb(cmd):
     def cb(_):
         subprocess.run(cmd)
@@ -211,8 +204,6 @@ class JobTrackerApp(rumps.App):
         else:
             for i, j in enumerate(visible_jobs):
                 items.extend(self._render_job(j, i))
-                if i < len(visible_jobs) - 1:
-                    items.append(rumps.separator)
 
         items.append(rumps.separator)
         toggle_label = (f"Show all ({hidden_n} hidden)" if not self.show_all
@@ -223,87 +214,55 @@ class JobTrackerApp(rumps.App):
         return items
 
     def _render_job(self, job, idx):
-        """Render one job as a flat list of MenuItems. All titles are made
-        unique by the job's id/values so they don't collide in rumps."""
-        items = []
-        title = job.get("title", job.get("id", "?"))
+        """One root row; short context and actions live in its own submenu."""
         status = job.get("status", "unknown")
         emoji = STATUS_EMOJI.get(status, "⚪️")
-        pct = _progress_pct(job)
-        jid = job.get("id", f"job{idx}")
-
-        # Header (non-interactive label). Title is naturally unique per job
-        # because it contains the job's title + pct.
-        items.append(rumps.MenuItem(f"{emoji} {job_heading(job)}"))
-
-        # Purpose (word-wrapped). Each wrap chunk gets prefixed with the
-        # job id (invisible-ish) so chunks don't collide across jobs.
-        purpose = job.get("purpose")
-        if purpose:
-            for chunk in _wrap(purpose, PURPOSE_WRAP_WIDTH):
-                items.append(rumps.MenuItem(f"  · {chunk}"))
-        # End of purpose section
-
-        # Progress / ETA / Rate
-        prog = job.get("progress") or {}
-        cur = prog.get("current")
-        tot = prog.get("total")
-        unit = prog.get("unit", "items")
-        rate = prog.get("rate_per_sec")
-        if cur is not None and tot:
-            items.append(rumps.MenuItem(f"  Progress: {cur:,} / {tot:,} {unit}"))
-            items.append(rumps.MenuItem(
-                f"  ETA: {_human_eta(max(0, tot - cur), rate)}"
-            ))
-        if rate is not None:
-            rate_unit = prog.get("rate_unit") or f"{unit}/sec"
-            items.append(rumps.MenuItem(f"  Rate: {rate:.3f} {rate_unit}"))
-
-        # Free-form detail lines from the agent (word-wrapped)
-        for d in (job.get("details") or []):
-            _emit_wrapped(items, str(d), first_prefix="  ", cont_prefix="    ")
-
-        # Telemetry (compact inline, word-wrapped)
+        row = rumps.MenuItem(f"{emoji} {job_heading(job)}")
         telemetry = job.get("telemetry") or {}
-        if telemetry:
-            for k, v in telemetry.items():
-                if v is None or v == "":
-                    continue
-                _emit_wrapped(items, f"• {k}: {v}",
-                              first_prefix="  ", cont_prefix="      ")
 
-        # Meta — single line if we can fit it
-        meta_bits = []
-        started = _parse_iso(job.get("started_at"))
-        updated = _parse_iso(job.get("updated_at"))
-        if started:
-            meta_bits.append(f"started {_format_age(started)}")
-        if updated:
-            meta_bits.append(f"updated {_format_age(updated)}")
-        if job.get("agent"):
-            meta_bits.append(f"agent={job['agent']}")
-        if job.get("pid"):
-            meta_bits.append(f"pid={job['pid']}")
-        if meta_bits:
-            items.append(rumps.MenuItem(f"  ◇ {' · '.join(meta_bits)}"))
+        # Only outstanding counts; completed progress is already in the heading.
+        outstanding = []
+        for key, label in (("needs_attention", "need attention"),
+                           ("pending", "pending"), ("no_result", "missing results")):
+            count = telemetry.get(key)
+            if isinstance(count, (int, float)) and count > 0:
+                outstanding.append(f"{count:g} {label}")
+        if outstanding:
+            row.add(rumps.MenuItem(" · ".join(outstanding)))
 
-        # Actions (clickable). Unique titles via job id suffix.
+        # One useful explanation, not every machine field and repeated count.
+        candidates = [job.get("summary", "")] + (job.get("details") or [])
+        for detail in candidates:
+            text = str(detail).strip()
+            if not text or re.fullmatch(r"[\w_ ]+:\s*\d+(?:\s+companies)?", text):
+                continue
+            if text.startswith(("http://", "https://", "/")):
+                continue
+            if text == status or text == status.replace("_", " "):
+                continue
+            row.add(rumps.MenuItem(text if len(text) <= 100 else text[:97] + "…"))
+            break
+
+        prog = job.get("progress") or {}
+        rate = prog.get("rate_per_sec")
+        current, total = prog.get("current"), prog.get("total")
+        if status == "running" and rate and rate > 0 and current is not None and total:
+            row.add(rumps.MenuItem(f"ETA: {_human_eta(max(0, total-current), rate)}"))
+        if telemetry.get("execution_status") == "not_verified_running":
+            row.add(rumps.MenuItem("Saved artifacts; worker activity unverified"))
+
+        row.add(rumps.separator)
+        state_path = job.get("_path")
+        if state_path and Path(state_path).exists():
+            row.add(rumps.MenuItem("Open details", callback=_open_details_cb(state_path)))
         log_path = job.get("log_path")
         if log_path and Path(log_path).exists():
-            items.append(rumps.MenuItem(
-                f"  ↗ Open log — {title}",
-                callback=_open_log_cb(log_path),
-            ))
+            row.add(rumps.MenuItem("Open source / log", callback=_open_log_cb(log_path)))
         if job.get("cancel_cmd"):
-            items.append(rumps.MenuItem(
-                f"  ✕ Cancel — {title}",
-                callback=_cancel_cb(job["cancel_cmd"]),
-            ))
-        items.append(rumps.MenuItem(
-            f"  − Remove from tracker — {title}",
-            callback=_remove_cb(job.get("_path")),
-        ))
-        return items
+            row.add(rumps.MenuItem("Cancel job", callback=_cancel_cb(job["cancel_cmd"])))
+        if state_path:
+            row.add(rumps.MenuItem("Remove from tracker", callback=_remove_cb(state_path)))
+        return [row]
 
     def _on_toggle_filter(self, _):
         self.show_all = not self.show_all

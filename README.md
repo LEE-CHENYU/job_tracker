@@ -17,8 +17,8 @@ launchd agents, or backgrounded shells, you lose visibility:
 - *"My agent kicked off something — what was it and why?"*
 
 Job Tracker is the one-line-of-truth: each running job has a JSON state
-file, the menu bar shows them all with progress, ETA, throughput,
-purpose, and one-click actions (Open log / Cancel / Remove).
+file. The menu shows one status/progress row per job. Hover for a short
+summary and actions; Open details reveals full purpose, telemetry and timestamps.
 
 It's specifically designed for **agent collaboration** — Claude or Codex
 sessions can hand off context to the user (and to each other) by
@@ -30,13 +30,14 @@ field for *why* the job is running.
 - **Zero coupling**: jobs register by writing a single JSON file. No
   server, no daemon to coordinate with.
 - **Multiple registration paths**: Python API, CLI, or raw JSON file.
-- **Rich context**: each job carries a multi-line `purpose` explaining
-  why it's running — surfaced inline in the menu so future sessions
-  understand the work.
-- **Status filtering**: only `running` jobs shown by default; toggle
-  reveals paused / done / failed.
-- **Word-wrapped detail lines**: long log tails, URLs, error messages
-  wrap automatically (URL-aware breaks on `/ ? & = : ,`).
+- **Compact menu**: one row per job; progress appears once. Each job has its
+  own submenu for a short explanation, outstanding counts and actions. Full
+  context remains in the JSON snapshot, accessible through Open details.
+- **Status filtering**: running, queued, blocked, needs-review and error jobs
+  appear by default; toggle reveals historical work.
+- **No repeated diagnostics**: source paths, generic purpose, timestamps and
+  raw telemetry stay in details. ETA appears only for running jobs with a
+  measured positive rate. Saved artifacts never imply a live worker.
 - **Per-job actions**: Open log file in Console, run cancel command,
   remove from tracker.
 - **Auto-refresh** every 30s; manual refresh button.
@@ -62,8 +63,8 @@ cp ~/job_tracker/contrib/launchd/com.jobtracker.menubar.plist \
 launchctl load -w ~/Library/LaunchAgents/com.jobtracker.menubar.plist
 ```
 
-The **"Jobs"** label appears in the menu bar. The percentage shown is
-the most-progressed currently-running job.
+The **"Jobs N"** label shows the number of current workflows, not a worker
+count or a completion percentage.
 
 ## Quick start: register your first job
 
