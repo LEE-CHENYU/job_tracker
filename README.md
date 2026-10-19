@@ -265,3 +265,7 @@ explicit status and progress units. A 49/49 saved-response count is labelled
 `needs review`, never 100% complete. Error markers remain visible in the compact
 label. Status is derived from saved receipts/queues; worker execution remains
 unverified unless a separate live worker check establishes it.
+
+## Research worker health
+
+Research rows show WORKING / WAITING / STALLED / BLOCKED / PAUSED alongside the saved research gate and counts. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. Missing workers are stalled; scheduled launches may clear this on the next interval. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.

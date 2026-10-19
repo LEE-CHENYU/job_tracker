@@ -1,5 +1,6 @@
 """Read-only research adapters. Refresh tracker snapshots; never launch model jobs."""
 import json
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import Counter
@@ -9,18 +10,81 @@ ROOT = Path('/Users/lichenyu/stock_journal')
 RESEARCH = ROOT / 'docs/research'
 
 
+def worker_activity(job_id, worker, enabled, alive, now=None):
+    """Execution health is independent of saved research/completion gates."""
+    now = now or datetime.now(timezone.utc)
+    if not enabled:
+        return 'paused', 'Execution disabled'
+    try:
+        retry = datetime.fromisoformat(worker.get('retry_after', ''))
+        if retry > now:
+            return 'blocked', 'Backoff until ' + retry.isoformat()
+    except (ValueError, TypeError):
+        pass
+    if not alive:
+        return 'stalled', 'No matching live queue worker'
+    try:
+        age = (now - datetime.fromisoformat(worker['heartbeat'])).total_seconds()
+    except (KeyError, ValueError, TypeError):
+        return 'stalled', 'Worker heartbeat missing or invalid'
+    if age < -60 or age > 1800:
+        return 'stalled', 'No fresh heartbeat; worker may be stuck in a long call'
+    if worker.get('status') in {'blocked', 'waiting', 'paused'}:
+        return 'blocked', str(worker.get('gate') or worker.get('status'))
+    active = worker.get('current_job_id')
+    if not active and job_id.startswith('research_notebook'):
+        active = ('research_notebook_030000_KS' if worker.get('current_company') == '030000.KS'
+                  else 'research_notebooks_21')
+    label = 'working' if active == job_id else 'waiting'
+    detail = f"Worker {worker.get('pid')}; heartbeat {int(max(age,0))}s ago"
+    if worker.get('current_company'):
+        detail += '; ' + str(worker['current_company'])
+    if worker.get('gate'):
+        detail += ' / ' + str(worker['gate'])
+    return label, detail
+
+
+def execution_telemetry(job_id):
+    family = 'notebooklm' if job_id.startswith('research_notebook') else 'research_screening'
+    folder = ROOT / 'docs' / family / 'runner'
+    try:
+        control = read(folder/'control.json')
+    except (OSError, ValueError):
+        control = {'enabled': True}
+    try:
+        worker = read(folder/'status.json')
+    except (OSError, ValueError):
+        worker = {}
+    alive = False
+    try:
+        pid = int(worker.get('pid', 0))
+        if pid > 0:
+            command = subprocess.run(['ps','-p',str(pid),'-o','command='],
+                capture_output=True,text=True,timeout=2).stdout
+            alive = 'codex exec' in command and f'docs/{family}/runner/worker_prompt.md' in command
+    except (ValueError, TypeError, OSError, subprocess.TimeoutExpired):
+        pass
+    state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive)
+    return {'execution_status':state,'execution_detail':detail,
+            'worker_pid':worker.get('pid'),'worker_heartbeat':worker.get('heartbeat')}
+
+
 def visible_by_default(status):
     return status in {'running', 'queued', 'blocked', 'needs_review', 'error'}
 
 
 def compact_title(jobs):
     active = sum(visible_by_default(j.get('status')) for j in jobs)
-    alert = any(j.get('status') in {'failed','error'} for j in jobs)
+    alert = any(j.get('status') in {'failed','error'} or (j.get('telemetry') or {}).get('execution_status') == 'stalled' for j in jobs)
     return ('Jobs ' + str(active) if active else 'Jobs') + ('!' if alert else '')
 
 
 def job_heading(job):
     status = job.get('status', 'unknown').replace('_', ' ')
+    activity = (job.get('telemetry') or {}).get('execution_status')
+    if activity in {'working','waiting','stalled','blocked','paused'}:
+        label = {'working':'WORKING','waiting':'WAITING — worker on other queue','stalled':'STALLED','blocked':'BLOCKED / BACKOFF','paused':'PAUSED'}[activity]
+        status = label + ' · ' + status
     progress = job.get('progress') or {}
     current, total = progress.get('current'), progress.get('total')
     count = f" — {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
@@ -54,7 +118,10 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
                 telemetry=telemetry or {})
     data['telemetry']['source_path'] = str(source)
     data['telemetry']['source_modified_at'] = datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat()
-    data['telemetry']['execution_status'] = 'not_verified_running'
+    if status != 'done':
+        data['telemetry'].update(execution_telemetry(job_id))
+    else:
+        data['telemetry']['execution_status'] = 'complete'
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(data, indent=2) + '\n')
     tmp.replace(path)

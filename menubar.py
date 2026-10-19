@@ -217,6 +217,8 @@ class JobTrackerApp(rumps.App):
         """One root row; short context and actions live in its own submenu."""
         status = job.get("status", "unknown")
         emoji = STATUS_EMOJI.get(status, "⚪️")
+        activity = (job.get("telemetry") or {}).get("execution_status")
+        emoji = {"stalled":"🔴", "working":"🟢", "waiting":"🔵", "blocked":"🟠", "paused":"⏸"}.get(activity, emoji)
         row = rumps.MenuItem(f"{emoji} {job_heading(job)}")
         telemetry = job.get("telemetry") or {}
 
@@ -248,7 +250,9 @@ class JobTrackerApp(rumps.App):
         current, total = prog.get("current"), prog.get("total")
         if status == "running" and rate and rate > 0 and current is not None and total:
             row.add(rumps.MenuItem(f"ETA: {_human_eta(max(0, total-current), rate)}"))
-        if telemetry.get("execution_status") == "not_verified_running":
+        if telemetry.get("execution_detail"):
+            row.add(rumps.MenuItem(telemetry["execution_detail"][:150]))
+        elif telemetry.get("execution_status") == "not_verified_running":
             row.add(rumps.MenuItem("Saved artifacts; worker activity unverified"))
 
         row.add(rumps.separator)
