@@ -1,6 +1,7 @@
 """Read-only research adapters. Refresh tracker snapshots; never launch model jobs."""
 import json
 import subprocess
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import Counter
@@ -44,6 +45,14 @@ def worker_activity(job_id, worker, enabled, alive, now=None):
     return label, detail
 
 
+def recovery_activity(record, now):
+    if not record.get('recovering'):
+        return None
+    retry = record.get('retry_at', 0)
+    label = datetime.fromtimestamp(retry, timezone.utc).isoformat()
+    return 'blocked', ('Watchdog backoff until ' + label if retry > now else 'Watchdog recovery due; checking connectivity')
+
+
 def execution_telemetry(job_id):
     family = 'notebooklm' if job_id.startswith('research_notebook') else 'research_screening'
     folder = ROOT / 'docs' / family / 'runner'
@@ -65,6 +74,11 @@ def execution_telemetry(job_id):
     except (ValueError, TypeError, OSError, subprocess.TimeoutExpired):
         pass
     state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive)
+    name = 'notebook-queue' if family == 'notebooklm' else 'screening-queue'
+    recovery = read(Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')) if (Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')).exists() else {}
+    overlay = recovery_activity(recovery, datetime.now(timezone.utc).timestamp())
+    if overlay and control.get('enabled',True):
+        state, detail = overlay
     return {'execution_status':state,'execution_detail':detail,
             'worker_pid':worker.get('pid'),'worker_heartbeat':worker.get('heartbeat')}
 
@@ -122,7 +136,7 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
         data['telemetry'].update(execution_telemetry(job_id))
     else:
         data['telemetry']['execution_status'] = 'complete'
-    tmp = path.with_suffix('.tmp')
+    tmp = path.with_name(path.name + f'.{os.getpid()}.tmp')
     tmp.write_text(json.dumps(data, indent=2) + '\n')
     tmp.replace(path)
 

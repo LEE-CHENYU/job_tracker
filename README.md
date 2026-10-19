@@ -269,3 +269,11 @@ unverified unless a separate live worker check establishes it.
 ## Research worker health
 
 Research rows show WORKING / WAITING / STALLED / BLOCKED / PAUSED alongside the saved research gate and counts. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. Missing workers are stalled; scheduled launches may clear this on the next interval. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.
+
+## Automatic recovery watchdog
+
+`queue_watchdog.py`, installed as `com.clawd.research-watchdog`, checks the authorized notebook and screening launchd services every 120 seconds. A matching worker with no fresh heartbeat or completed work event for 30 minutes is checkpointed and unloaded, including its launchd-owned process group. Reconnection/error events do not renew progress. A new worker receives startup grace; unrelated PID commands are never killed. A progressing long call is left alone. A truly silent call exceeding 30 minutes can be interrupted; remote requests must be reconciled before reissue.
+
+Recovery delay doubles from 60 seconds up to one hour (actual checks occur on the two-minute cadence). The original job is unloaded during recovery so its own timer cannot bypass backoff. A bounded unauthenticated connectivity probe precedes reloading the original plist; HTTP errors still establish transport reachability, not model availability. Repeated provider failures can therefore require later recovery cycles. Explicit disabled controls prevent automatic relaunch. State, archived checkpoints and recovery logs live under `~/Library/Logs/research-watchdog/`. The tracker shows BLOCKED / BACKOFF during recovery; research completion counts are unchanged.
+
+The watchdog lock prevents overlapping supervisors. The normal queue scheduler still handles ordinary invocation completion. Disabling an in-flight worker remains an explicit queue stop operation; the watchdog only respects the disabled flag for subsequent recovery. Installation: bootstrap `contrib/com.clawd.research-watchdog.plist` into the user launchd domain after copying it to `~/Library/LaunchAgents/`.
