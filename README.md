@@ -230,3 +230,30 @@ If you want a web UI, you have all the state files at
 ## License
 
 MIT
+
+## Research workflow tracking (2026-10-18)
+
+`research_sync.py` reads the stock journal's notebook queue, 21-company creation
+plan, Claude backfill queue, Codex redo outputs, specialist result files and
+20-company review registers. It updates eight aggregate/current-job records
+under `state/` every two minutes via `com.clawd.job-tracker.research-sync`.
+It does not execute research or call NotebookLM. Source paths and source
+modification dates are retained in telemetry; refreshed display time is not
+evidence freshness. Missing sources produce an explicit sync error.
+
+Queued, blocked and needs-review jobs are visible by default. Historical
+running flags are never copied as proof of live execution. Saved results,
+receipts and final verified verdicts have separate progress labels. Notebook
+completion requires explicit `live_report_verified: true` in its queue/creation
+record after the mandatory content-verification receipt is saved. Audio or
+artifact existence does not satisfy this gate. New jobs must be added to the
+canonical queue/plan rather than edited directly in the derived tracker file.
+
+The old Codex corpus and Scenario B refresh agents were disabled (not deleted)
+during cleanup; their May-August snapshots are historical, and Scenario B's
+old corpus path produced a perpetual error. No underlying workload was stopped.
+Historical state is preserved with SHA-256 receipts under
+`archive/20261019T005451Z/manifest.json`. Use `launchctl enable` and bootstrap
+the preserved plist only when deliberately resuming those monitors.
+
+Validation: `python3 -m unittest discover -s tests -v`.

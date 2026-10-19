@@ -43,10 +43,13 @@ DETAIL_WRAP_WIDTH = 90  # detail / telemetry lines (longer than purpose)
 STATUS_EMOJI = {
     "running": "🟢", "paused": "🟡",
     "done": "✅", "failed": "🔴", "error": "🔴",
-    "stopped": "⚪️",
+    "stopped": "⚪️", "queued": "🔵", "blocked": "🟠",
+    "needs_review": "🟡", "stale": "⚪️",
 }
 
-VISIBLE_BY_DEFAULT = {"running"}
+from research_sync import visible_by_default
+
+VISIBLE_BY_DEFAULT = {"running", "queued", "blocked", "needs_review", "error"}
 
 
 def _parse_iso(s):
@@ -195,7 +198,10 @@ class JobTrackerApp(rumps.App):
         # Title shows running-job COUNT (not a percentage — averaging
         # progress across unrelated jobs is meaningless). Flag failures
         # with a ⚠ so the user notices even before opening the dropdown.
-        if running_n == 0 and failed_n == 0:
+        pending_n = sum(1 for j in jobs if j.get("status") in ("queued", "blocked", "needs_review"))
+        if pending_n:
+            self.title = f"{DEFAULT_TITLE} {running_n} running · {pending_n} pending"
+        elif running_n == 0 and failed_n == 0:
             self.title = DEFAULT_TITLE
         elif failed_n > 0:
             self.title = f"{DEFAULT_TITLE} {running_n} ⚠{failed_n}"
@@ -208,7 +214,7 @@ class JobTrackerApp(rumps.App):
         visible_jobs = []
         for j in all_jobs:
             st = j.get("status", "")
-            if not self.show_all and st not in VISIBLE_BY_DEFAULT:
+            if not self.show_all and not visible_by_default(st):
                 hidden_n += 1
             else:
                 visible_jobs.append(j)
@@ -224,7 +230,7 @@ class JobTrackerApp(rumps.App):
 
         items.append(rumps.separator)
         toggle_label = (f"Show all ({hidden_n} hidden)" if not self.show_all
-                        else "Show only running")
+                        else "Show current work")
         items.append(rumps.MenuItem(toggle_label, callback=self._on_toggle_filter))
         items.append(rumps.MenuItem("Refresh", callback=self._on_refresh))
         items.append(rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application()))

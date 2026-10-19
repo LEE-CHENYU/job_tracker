@@ -1,2 +1,6 @@
 state/
 __pycache__/
+
+# Local historical tracker snapshots
+archive/
+.DS_Store
