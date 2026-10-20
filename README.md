@@ -286,3 +286,16 @@ Per-item status text is omitted; status is shown once in the section heading. Do
 Notebook activity is matched to the worker’s exact current company. The original-21 group is Working only for a company actually in its canonical membership list; work on another notebook does not mark that group active. Final completion counts remain separate from saved intermediate outputs.
 
 Rows distinguish intermediate outputs from final acceptance. Notebook rows show verified audio, linked transcripts and fully accepted notebooks; their submenu retains content-QC/native-report counts. The reference batch shows Claude/Codex saved first passes and reviewed outcomes separately, read from its canonical run file without changing producer state. Section health remains independent: zero accepted does not mean stalled, and many saved outputs do not prove acceptance.
+
+### Notebook output counters
+
+Notebook menu rows show `audio completed/planned` across current, historical,
+and specialist episodes, followed by `report generated` or `report pending`.
+Grouped rows show generated-report counts per notebook. An episode is counted
+as completed only when its downloaded audio is recorded as validated; planned
+but missing episodes remain in the denominator. Explicit episode registers
+supersede legacy single-audio fields, preventing old audio from filling new slots.
+A completed native report counts as generated even if content review fails.
+Generation is not acceptance: transcription, content review, native-report
+acceptance, and final completion remain separate in the job details.
+The adapter only reads research queues; it never starts generation.

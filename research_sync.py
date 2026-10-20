@@ -142,12 +142,53 @@ def with_display_progress(job):
     return result
 
 
+def notebook_output_progress(rows):
+    """Display generated outputs independently of research/content acceptance.
+
+    Explicit episode registers supersede the legacy single audio field. Plans
+    retain pending slots so a partial multi-episode notebook cannot show 1/1.
+    """
+    counts = dict(audio_done=0, audio_total=0, reports_generated=0, report_total=len(rows))
+    for row in rows:
+        plan = row.get('audio_plan') or {}
+        if isinstance(plan, str):
+            path = Path(plan)
+            if not path.is_absolute():
+                path = ROOT / path
+            plan = read(path)  # Fail visibly rather than hide a missing plan.
+        planned = plan.get('episodes') or []
+        episodes = list(row.get('audio_episodes') or row.get('historical_audio_episodes') or [])
+        episodes += row.get('specialist_audio_episodes') or []
+        # Duplicate artifact references represent one output, not extra episodes.
+        unique, seen = [], set()
+        for episode in episodes:
+            identity = episode.get('artifact_id') or episode.get('audio_artifact_id') or episode.get('audio_sha256')
+            if identity and identity in seen:
+                continue
+            if identity:
+                seen.add(identity)
+            unique.append(episode)
+        episodes = unique
+        if not episodes and len(planned) <= 1:
+            episodes = [row]
+        counts['audio_total'] += max(len(planned), len(episodes), 1)
+        counts['audio_done'] += sum(e.get('audio_downloaded_validated') is True for e in episodes)
+        generated = (row.get('live_report_generated') is True or row.get('live_report_verified') is True
+                     or any(r.get('status') == 'completed' for r in row.get('generated_reports', [])))
+        counts['reports_generated'] += int(generated)
+    return counts
+
+
 def job_heading(job):
     progress = job.get('progress') or {}
     current, total = progress.get('current'), progress.get('total')
     count = f" · {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
     dimensions = (job.get('telemetry') or {}).get('completion_dimensions') or {}
-    if all(key in dimensions for key in ['total','audio_integrity','transcripts','complete']) and dimensions['total']:
+    outputs = (job.get('telemetry') or {}).get('output_progress')
+    if outputs:
+        report = ('report generated' if outputs['reports_generated'] else 'report pending') if outputs['report_total'] == 1 else f"reports {outputs['reports_generated']}/{outputs['report_total']}"
+        count = f" · audio {outputs['audio_done']}/{outputs['audio_total']} · {report}"
+    elif all(key in dimensions for key in ['total','audio_integrity','transcripts','complete']) and dimensions['total']:
         count = ''.join(f" · {label} {dimensions[key]}/{dimensions['total']}" for label,key in
                         [('audio','audio_integrity'),('transcripts','transcripts'),('accepted','complete')])
     elif job.get('stage_progress'):
@@ -218,7 +259,7 @@ def sync_notebooks():
           'Original 18: reuse reviewed input after corrections; three picks: complete missing input work.',
           'Local HTML/PDF reader remains a separate deliverable.',
           'Saved artifact snapshot only; reconcile live NotebookLM before generating.'],
-         {'companies': [r['ticker'] for r in rows], 'completion_dimensions':dims})
+         {'companies': [r['ticker'] for r in rows], 'completion_dimensions':dims, 'output_progress':notebook_output_progress(rows)})
     source = ROOT / 'docs/notebooklm/queue.json'
     for row in read(source)['jobs']:
         dims,detail=lifecycle([row])
@@ -227,7 +268,7 @@ def sync_notebooks():
              'NotebookLM — ' + row['company'], 'done' if current else 'queued',
              current, total, 'complete notebooks', source,
              [detail, row['status'], row.get('blocking_reason',''), row['notebook_url']],
-             {'stage':row['status'], 'notebook_id':row['notebook_id'], 'completion_dimensions':dims})
+             {'stage':row['status'], 'notebook_id':row['notebook_id'], 'completion_dimensions':dims, 'output_progress':notebook_output_progress([row])})
 
 
 def sync_audio_qc():
