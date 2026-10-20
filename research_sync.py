@@ -12,7 +12,7 @@ ROOT = Path('/Users/lichenyu/stock_journal')
 RESEARCH = ROOT / 'docs/research'
 
 
-def worker_activity(job_id, worker, enabled, alive, now=None):
+def worker_activity(job_id, worker, enabled, alive, now=None, company_ids=None):
     """Execution health is independent of saved research/completion gates."""
     now = now or datetime.now(timezone.utc)
     if not enabled:
@@ -35,8 +35,11 @@ def worker_activity(job_id, worker, enabled, alive, now=None):
         return 'blocked', str(worker.get('gate') or worker.get('status'))
     active = worker.get('current_job_id')
     if not active and job_id.startswith('research_notebook'):
-        active = ('research_notebook_030000_KS' if worker.get('current_company') == '030000.KS'
-                  else 'research_notebooks_21')
+        company = worker.get('current_company')
+        if company and job_id == 'research_notebooks_21' and company in (company_ids or []):
+            active = job_id
+        elif company:
+            active = 'research_notebook_' + company.replace('.', '_')
     label = 'working' if active == job_id else 'waiting'
     detail = f"Worker {worker.get('pid')}; heartbeat {int(max(age,0))}s ago"
     if worker.get('current_company'):
@@ -54,7 +57,7 @@ def recovery_activity(record, now):
     return 'blocked', ('Watchdog backoff until ' + label if retry > now else 'Watchdog recovery due; checking connectivity')
 
 
-def execution_telemetry(job_id):
+def execution_telemetry(job_id, company_ids=None):
     family = 'notebooklm' if job_id.startswith('research_notebook') else 'research_screening'
     folder = ROOT / 'docs' / family / 'runner'
     try:
@@ -74,7 +77,7 @@ def execution_telemetry(job_id):
             alive = 'codex exec' in command and f'docs/{family}/runner/worker_prompt.md' in command
     except (ValueError, TypeError, OSError, subprocess.TimeoutExpired):
         pass
-    state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive)
+    state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive,company_ids=company_ids)
     name = 'notebook-queue' if family == 'notebooklm' else 'screening-queue'
     recovery = read(Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')) if (Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')).exists() else {}
     overlay = recovery_activity(recovery, datetime.now(timezone.utc).timestamp())
@@ -130,7 +133,7 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
     data['telemetry']['source_path'] = str(source)
     data['telemetry']['source_modified_at'] = datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat()
     if status != 'done':
-        data['telemetry'].update(execution_telemetry(job_id))
+        data['telemetry'].update(execution_telemetry(job_id, data['telemetry'].get('companies')))
     else:
         data['telemetry']['execution_status'] = 'complete'
     tmp = path.with_name(path.name + f'.{os.getpid()}.tmp')

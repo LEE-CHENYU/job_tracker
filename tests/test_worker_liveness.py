@@ -29,3 +29,14 @@ class WorkerActivityTests(unittest.TestCase):
     def test_heading_leaves_status_to_section(self):
         text=job_heading({'title':'Codex','status':'needs_review','telemetry':{'execution_status':'stalled'}})
         self.assertEqual(text,'Codex')
+
+    def test_notebook_work_matches_exact_company_instead_of_default_group(self):
+        worker={'pid':123,'heartbeat':self.now.isoformat(),'status':'running','current_company':'NXST'}
+        self.assertEqual(worker_activity('research_notebooks_21',worker,True,True,self.now)[0],'waiting')
+        self.assertEqual(worker_activity('research_notebook_NXST',worker,True,True,self.now)[0],'working')
+
+    def test_group_work_requires_membership_in_group(self):
+        worker={'pid':123,'heartbeat':self.now.isoformat(),'status':'running','current_company':'TME'}
+        self.assertEqual(worker_activity('research_notebooks_21',worker,True,True,self.now,company_ids=['TME','PDD'])[0],'working')
+        worker['current_company']='NXST'
+        self.assertEqual(worker_activity('research_notebooks_21',worker,True,True,self.now,company_ids=['TME','PDD'])[0],'waiting')
