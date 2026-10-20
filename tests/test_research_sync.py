@@ -1,10 +1,25 @@
 import unittest
+from unittest.mock import patch
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from research_sync import workflow_status, notebook_counts, visible_by_default, compact_title, job_heading
 
 class ResearchSyncTests(unittest.TestCase):
+    def test_qc_refresh_survives_unrelated_adapter_failure(self):
+        import research_sync as sync
+        calls=[]
+        def fail():
+            calls.append('audio')
+            raise ValueError('audio unavailable')
+        with TemporaryDirectory() as tmp, patch.object(sync,'HERE',Path(tmp)), \
+             patch.object(sync,'save'), patch.object(sync,'sync_audio_qc',fail), \
+             patch.object(sync,'sync_notebooks',lambda:calls.append('notebooks')), \
+             patch.object(sync,'sync_screens',lambda:calls.append('screening')), \
+             patch.object(sync,'sync_research_qc',lambda:calls.append('central_qc')):
+            with self.assertRaises(RuntimeError):
+                sync.main()
+        self.assertEqual(calls,['audio','notebooks','screening','central_qc'])
     def test_menu_title_stays_short_and_keeps_errors_visible(self):
         jobs = [{'status':'queued'}] * 8
         self.assertEqual(compact_title(jobs), 'Jobs 8')

@@ -27,6 +27,12 @@ field for *why* the job is running.
 
 ## Features
 
+Research QC is refreshed by the existing minute-based research-sync service.
+It reads screening, specialist, Close Read and audio evidence into the shared
+`stock_journal/docs/research_qc` ledger. Review/finding counts are observations,
+not a quality percentage. A failed adapter reports its error while independent
+adapters continue; no model calls are launched by the refresh.
+
 - **Zero coupling**: jobs register by writing a single JSON file. No
   server, no daemon to coordinate with.
 - **Multiple registration paths**: Python API, CLI, or raw JSON file.

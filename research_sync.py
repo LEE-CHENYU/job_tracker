@@ -279,6 +279,14 @@ def sync_audio_qc():
     sync()
 
 
+def sync_research_qc():
+    import sys
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts.research_qc import sync
+    sync()
+
+
 def sync_screens():
     source = RESEARCH / 'claude_backfill_20261018/queue.json'
     batches = read(source)['batches']
@@ -334,16 +342,20 @@ def sync_screens():
 
 def main():
     # Preserve previous state if source access fails; show an explicit adapter error.
-    for name, fn in [('audio_qc',sync_audio_qc),('notebooks',sync_notebooks),('screening',sync_screens)]:
+    errors=[]
+    for name, fn in [('audio_qc',sync_audio_qc),('notebooks',sync_notebooks),
+                     ('screening',sync_screens),('research_qc',sync_research_qc)]:
         try:
             fn()
         except Exception as exc:
             save('research_sync_'+name, 'Research sync — '+name, 'error',0,1,'sync',Path(__file__),[str(exc)])
-            raise
+            errors.append(name+': '+str(exc))
         else:
             p=HERE/'state'/('research_sync_'+name+'.json')
             if p.exists():
                 x=read(p);x['status']='done';p.write_text(json.dumps(x,indent=2)+'\n')
+    if errors:
+        raise RuntimeError('; '.join(errors))
 
 if __name__ == '__main__':
     main()
