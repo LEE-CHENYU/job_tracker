@@ -141,26 +141,50 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
     tmp.replace(path)
 
 
+def lifecycle(rows):
+    import sys
+    if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
+    from scripts.notebook_audio_qc import notebook_dimensions
+    def available(path):
+        return read(path) if path.exists() else {}
+    counts=notebook_dimensions(rows, available(ROOT/'docs/notebooklm/transcription/queue.json'),
+                              available(ROOT/'docs/notebooklm/audio_qc/queue.json'))
+    detail=' | '.join(f"{label} {counts[key]}/{counts['total']}" for label,key in
+                    [('Audio integrity','audio_integrity'),('Transcripts','transcripts'),
+                     ('Content accepted','content_accepted'),('Native reports','native_reports')])
+    return counts,detail
+
+
 def sync_notebooks():
     plan = RESEARCH / 'close_read_companions_20261018/creation_audit/creation_plan.json'
     rows = read(plan)['companies']
-    current, total = notebook_counts(rows)
+    dims,detail=lifecycle(rows)
+    current,total=dims['complete'],dims['total']
     save('research_notebooks_21', 'NotebookLM — original 18 + three picks',
          workflow_status(sum(bool(r.get('generated_reports')) for r in rows), total, current),
-         current, total, 'verified live reports', plan,
-         ['Input analytical report and verified live Studio report are separate gates.',
+         current, total, 'complete notebooks', plan,
+         [detail, 'Counts are recorded lifecycle gates; QC is transcript-based unless listening is documented.',
           'Original 18: reuse reviewed input after corrections; three picks: complete missing input work.',
           'Local HTML/PDF reader remains a separate deliverable.',
           'Saved artifact snapshot only; reconcile live NotebookLM before generating.'],
-         {'companies': [r['ticker'] for r in rows]})
+         {'companies': [r['ticker'] for r in rows], 'completion_dimensions':dims})
     source = ROOT / 'docs/notebooklm/queue.json'
     for row in read(source)['jobs']:
-        current, total = notebook_counts([row])
+        dims,detail=lifecycle([row])
+        current,total=dims['complete'],dims['total']
         save('research_notebook_' + row['ticker'].replace('.', '_'),
              'NotebookLM — ' + row['company'], 'done' if current else 'queued',
-             current, total, 'verified live reports', source,
-             [row['status'], row.get('blocking_reason',''), row['notebook_url']],
-             {'stage':row['status'], 'notebook_id':row['notebook_id']})
+             current, total, 'complete notebooks', source,
+             [detail, row['status'], row.get('blocking_reason',''), row['notebook_url']],
+             {'stage':row['status'], 'notebook_id':row['notebook_id'], 'completion_dimensions':dims})
+
+
+def sync_audio_qc():
+    import sys
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts.notebook_audio_qc import sync
+    sync()
 
 
 def sync_screens():
@@ -218,7 +242,7 @@ def sync_screens():
 
 def main():
     # Preserve previous state if source access fails; show an explicit adapter error.
-    for name, fn in [('notebooks',sync_notebooks),('screening',sync_screens)]:
+    for name, fn in [('audio_qc',sync_audio_qc),('notebooks',sync_notebooks),('screening',sync_screens)]:
         try:
             fn()
         except Exception as exc:
