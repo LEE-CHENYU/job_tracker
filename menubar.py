@@ -45,6 +45,42 @@ def project_dot(job):
 
 from research_sync import visible_by_default, compact_title, job_heading, with_display_progress
 
+def compact_job(job):
+    """Presentation copy only; full legal name remains in canonical details."""
+    if not str(job.get("id", "")).startswith("research_notebook_"):
+        return job
+    title = re.split(r"\s+[—–]\s+", job.get("title", ""), maxsplit=1)[-1]
+    aliases = {"research_notebook_PLAT_AT": "Thrace Plastics",
+               "research_notebook_BPOSF": "bpost / Bnode",
+               "research_notebook_603444_SS": "G-bits",
+               "research_notebook_013870_KS": "GMB Korea"}
+    name = aliases.get(job["id"]) or re.split(r"[（(;；]", title, maxsplit=1)[0].strip()
+    if len(name) > 48:
+        name = name[:45].rstrip() + "…"
+    return dict(job, title="NotebookLM · " + name)
+
+
+def backlog_group(job, section):
+    # Failed, blocked, stalled and working always retain individual root rows.
+    if section not in {"waiting", "queued", "needs_review", "paused"}:
+        return None
+    dot = project_dot(job)
+    if dot == "🔵":
+        outputs = (job.get("telemetry") or {}).get("output_progress") or {}
+        if str(job.get("id", "")).startswith("research_notebook"):
+            generated = (outputs.get("audio_total", 0) > 0
+                         and outputs.get("audio_done", 0) >= outputs["audio_total"]
+                         and outputs.get("report_total", 0) > 0
+                         and outputs.get("reports_generated", 0) >= outputs["report_total"])
+            return "🔵 Generated · QC backlog" if generated else "🔵 Waiting notebooks"
+        return "🔵 Audio review backlog"
+    if dot == "🔴":
+        return "🔴 Screening backlog"
+    if job.get("id") == "research_quality":
+        return "⚪ Research QC backlog"
+    return None
+
+
 VISIBLE_BY_DEFAULT = {"running", "queued", "blocked", "needs_review", "error"}
 
 
@@ -222,8 +258,22 @@ class JobTrackerApp(rumps.App):
             for key in sorted(sections, key=lambda k: (order.index(k) if k in order else len(order), k)):
                 jobs = sections[key]
                 items.append(rumps.MenuItem(f"{key.replace('_', ' ').capitalize()} ({len(jobs)})"))
+                groups = {}
                 for i, job in enumerate(jobs):
-                    items.extend(self._render_job(job, i))
+                    label = None if self.show_all else backlog_group(job, key)
+                    if label:
+                        groups.setdefault(label, []).append(job)
+                    else:
+                        items.extend(self._render_job(job, i))
+                for label, members in groups.items():
+                    group = rumps.MenuItem(f"{label} ({len(members)})")
+                    for i, job in enumerate(members):
+                        for row in self._render_job(job, i):
+                            # Same short names must not replace distinct companies.
+                            if row.title in group:
+                                row.title += f" · {job['id']}"
+                            group.add(row)
+                    items.append(group)
 
         stamp = datetime.now().strftime("%H:%M:%S")
         items.append(rumps.MenuItem(f"Menu refreshed {stamp} · auto {REFRESH_SEC}s · data every 60s"))
@@ -237,7 +287,7 @@ class JobTrackerApp(rumps.App):
     def _render_job(self, job, idx):
         """One root row; short context and actions live in its own submenu."""
         status = job.get("status", "unknown")
-        row = rumps.MenuItem(f"{project_dot(job)} {job_heading(job)}")
+        row = rumps.MenuItem(f"{project_dot(job)} {job_heading(compact_job(job))}")
         telemetry = job.get("telemetry") or {}
 
         # Only outstanding counts; completed progress is already in the heading.

@@ -305,3 +305,16 @@ A completed native report counts as generated even if content review fails.
 Generation is not acceptance: transcription, content review, native-report
 acceptance, and final completion remain separate in the job details.
 The adapter only reads research queues; it never starts generation.
+
+### Compact backlog display (2026-10-20)
+
+Working, stalled, blocked and failed jobs remain individual rows under their
+status sections. Waiting notebooks collapse into counted submenus; notebooks
+with all planned audio and reports generated have a separate QC-backlog submenu.
+Screening and audio-review backlog are also collapsed within their status section.
+Counts denote tracker entries, not running workers or unique companies. Opening a
+group exposes the original progress and job actions. Show all restores individual
+rows. Notebook company names are shortened for display only; canonical titles,
+source JSON, task status and acceptance requirements are unchanged. Project colors
+and automatic refresh are preserved. This presentation change does not stop,
+start, remove or mark research jobs complete.

@@ -86,3 +86,33 @@ class MenuTests(unittest.TestCase):
         self.assertEqual(menubar.project_dot({'id':'research_specialists_paired'}), '🔴')
 
 if __name__=='__main__': unittest.main()
+
+class BacklogTests(unittest.TestCase):
+    def test_backlog_collapses_but_active_and_stalled_stay_individual(self):
+        def job(key, activity, done=0):
+            return {'id':'research_notebook_'+key, 'title':'NotebookLM — '+key,
+                    'status':'queued','_path':__file__,'telemetry':{'execution_status':activity,
+                    'output_progress':{'audio_done':done,'audio_total':1,'reports_generated':done,'report_total':1}}}
+        jobs=[job('Active','working'),job('Stalled','stalled'),job('Pending','waiting'),job('Generated','waiting',1)]
+        app=SimpleNamespace(show_all=False,_on_toggle_filter=lambda _:None,_on_refresh=lambda _:None,
+            _render_job=lambda j,i:menubar.JobTrackerApp._render_job(None,j,i))
+        with patch.object(menubar,'_read_jobs',return_value=jobs):
+            items=menubar.JobTrackerApp._build_items(app)
+        titles=[x.title for x in items]
+        self.assertTrue(any('Active' in t for t in titles))
+        self.assertTrue(any('Stalled ·' in t for t in titles))
+        self.assertFalse(any('NotebookLM · Pending ·' in t or 'NotebookLM · Generated ·' in t for t in titles))
+        groups=[x for x in items if 'Waiting notebooks (1)' in x.title or 'Generated · QC backlog (1)' in x.title]
+        self.assertEqual(len(groups),2)
+        self.assertEqual(sum(len(g) for g in groups),2)
+        for g in groups:
+            self.assertIn('Open details',next(iter(g.values())))
+
+    def test_short_name_keeps_progress_and_does_not_mutate_source(self):
+        title='NotebookLM — Ayvens (société anonyme; formerly ALD S.A.); registered office '+('address '*30)
+        job={'id':'research_notebook_AYV_PA','title':title,'status':'queued','progress':{'current':0,'total':1,'unit':'reports'}}
+        row=menubar.JobTrackerApp._render_job(None,job,0)[0]
+        self.assertIn('Ayvens',row.title)
+        self.assertIn('0/1 reports',row.title)
+        self.assertLess(len(row.title),90)
+        self.assertEqual(job['title'],title)
