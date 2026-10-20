@@ -97,10 +97,34 @@ def compact_title(jobs):
     return ('Jobs ' + str(active) if active else 'Jobs') + ('!' if alert else '')
 
 
+def with_display_progress(job):
+    """Read-only display enrichment; never write producer-owned queue state."""
+    result = dict(job)
+    if job.get('id') == 'research_intake_reference02':
+        try:
+            companies = read(Path(job['log_path']))['companies']
+            total = len(companies)
+            if total:
+                result['stage_progress'] = [
+                    {'label':label, 'current':sum(c.get(field) == 'COMPLETE_RAW_FROZEN' for c in companies), 'total':total}
+                    for label,field in [('Claude','claude_pass_status'),('Codex','codex_pass_status')]]
+                result['stage_progress'].append({'label':'reviewed','current':sum(bool(c.get('reviewed_outcome')) for c in companies),'total':total})
+        except (OSError, ValueError, KeyError, TypeError):
+            # Keep the producer's existing labelled progress; never invent zero passes.
+            pass
+    return result
+
+
 def job_heading(job):
     progress = job.get('progress') or {}
     current, total = progress.get('current'), progress.get('total')
     count = f" · {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
+    dimensions = (job.get('telemetry') or {}).get('completion_dimensions') or {}
+    if all(key in dimensions for key in ['total','audio_integrity','transcripts','complete']) and dimensions['total']:
+        count = ''.join(f" · {label} {dimensions[key]}/{dimensions['total']}" for label,key in
+                        [('audio','audio_integrity'),('transcripts','transcripts'),('accepted','complete')])
+    elif job.get('stage_progress'):
+        count = ''.join(f" · {stage['label']} {stage['current']}/{stage['total']}" for stage in job['stage_progress'])
     title = re.sub(r"\s+[—–-]\s+", " · ", job.get("title", job.get("id", "Unknown job")))
     return f"{title}{count}"
 

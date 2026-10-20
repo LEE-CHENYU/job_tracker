@@ -43,7 +43,7 @@ def project_dot(job):
     return PROJECT_DOTS.get(project, "⚪")
 
 
-from research_sync import visible_by_default, compact_title, job_heading
+from research_sync import visible_by_default, compact_title, job_heading, with_display_progress
 
 VISIBLE_BY_DEFAULT = {"running", "queued", "blocked", "needs_review", "error"}
 
@@ -130,7 +130,7 @@ def _read_jobs():
         try:
             data = json.loads(f.read_text())
             data["_path"] = str(f)
-            out.append(data)
+            out.append(with_display_progress(data))
         except Exception as exc:
             out.append({
                 "id": f.stem, "title": f.stem, "status": "error",

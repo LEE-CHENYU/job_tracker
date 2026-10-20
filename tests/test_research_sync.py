@@ -1,4 +1,7 @@
 import unittest
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from research_sync import workflow_status, notebook_counts, visible_by_default, compact_title, job_heading
 
 class ResearchSyncTests(unittest.TestCase):
@@ -36,5 +39,27 @@ class ResearchSyncTests(unittest.TestCase):
         self.assertNotIn(' - ',text)
         self.assertIn('follow-through',text)
         self.assertIn('1/2 results',text)
+
+
+    def test_notebook_heading_shows_outputs_and_acceptance_separately(self):
+        job={'title':'Notebooks','progress':{'current':0,'total':21,'unit':'complete notebooks'},
+             'telemetry':{'completion_dimensions':{'total':21,'audio_integrity':21,'transcripts':18,'content_accepted':0,'native_reports':0,'complete':0}}}
+        self.assertEqual(job_heading(job),'Notebooks · audio 21/21 · transcripts 18/21 · accepted 0/21')
+
+    def test_reference_display_reads_passes_without_promoting_acceptance(self):
+        from research_sync import with_display_progress
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)/'run.json'
+            data={'companies':[{'claude_pass_status':'COMPLETE_RAW_FROZEN','codex_pass_status':'PENDING'},
+                               {'claude_pass_status':'PENDING','codex_pass_status':'PENDING'}]}
+            source.write_text(json.dumps(data))
+            job={'id':'research_intake_reference02','title':'New batch','log_path':str(source),
+                 'progress':{'current':0,'total':2,'unit':'reviewed companies'}}
+            result=with_display_progress(job)
+            self.assertEqual(job_heading(result),'New batch · Claude 1/2 · Codex 0/2 · reviewed 0/2')
+            self.assertNotIn('stage_progress',job)
+            self.assertEqual(json.loads(source.read_text()),data)
+            source.unlink()
+            self.assertIn('0/2 reviewed companies',job_heading(with_display_progress(job)))
 
 if __name__=='__main__': unittest.main()
