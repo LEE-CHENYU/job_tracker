@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import os
+import plistlib
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import Counter
@@ -57,6 +58,19 @@ def recovery_activity(record, now):
     return 'blocked', ('Watchdog backoff until ' + label if retry > now else 'Watchdog recovery due; checking connectivity')
 
 
+def scheduled_activity(worker, registered, service_pid, interval, now):
+    """Idle registered timers are waiting, but registration cannot hide overdue work."""
+    if not registered or service_pid or not interval or interval <= 0:
+        return None
+    try:
+        age = now - datetime.fromisoformat(worker['heartbeat']).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return None
+    if -60 <= age <= 2 * interval + 120:
+        return 'waiting', f'Scheduled between invocations; checks every {interval // 60} min'
+    return None
+
+
 def execution_telemetry(job_id, company_ids=None):
     family = 'notebooklm' if job_id.startswith('research_notebook') else 'research_screening'
     folder = ROOT / 'docs' / family / 'runner'
@@ -79,6 +93,19 @@ def execution_telemetry(job_id, company_ids=None):
         pass
     state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive,company_ids=company_ids)
     name = 'notebook-queue' if family == 'notebooklm' else 'screening-queue'
+    if not alive and state == 'stalled' and control.get('enabled', True):
+        try:
+            label = 'com.clawd.' + name
+            listing = subprocess.run(['launchctl','list'],capture_output=True,text=True,timeout=2)
+            matches = [line.split() for line in listing.stdout.splitlines() if line.split() and line.split()[-1] == label]
+            config = plistlib.loads((Path.home()/'Library/LaunchAgents'/(label+'.plist')).read_bytes())
+            service_pid = matches[0][0] if matches and matches[0][0] != '-' else None
+            scheduled = scheduled_activity(worker, bool(matches) and listing.returncode == 0,
+                                           service_pid, config.get('StartInterval'), datetime.now(timezone.utc).timestamp())
+            if scheduled:
+                state, detail = scheduled
+        except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+            pass
     recovery = read(Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')) if (Path('/Users/lichenyu/Library/Logs/research-watchdog')/(name+'.json')).exists() else {}
     overlay = recovery_activity(recovery, datetime.now(timezone.utc).timestamp())
     if overlay and control.get('enabled',True):

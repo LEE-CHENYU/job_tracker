@@ -267,7 +267,7 @@ unverified unless a separate live worker check establishes it.
 
 ## Research worker health
 
-Research status sections show Working / Waiting / Stalled / Blocked / Paused. Each row shows its name and counts; the full saved research gate remains in details. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. Missing workers are stalled; scheduled launches may clear this on the next interval. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.
+Research status sections show Working / Waiting / Stalled / Blocked / Paused. Each row shows its name and counts; the full saved research gate remains in details. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. An enabled, registered timer with a recent worker heartbeat is Waiting between invocations. This grace is bounded to two scheduling intervals plus two minutes; missing registration, missing heartbeat or overdue work remains Stalled. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.
 
 ## Automatic recovery watchdog
 

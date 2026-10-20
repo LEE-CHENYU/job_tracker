@@ -40,3 +40,14 @@ class WorkerActivityTests(unittest.TestCase):
         self.assertEqual(worker_activity('research_notebooks_21',worker,True,True,self.now,company_ids=['TME','PDD'])[0],'working')
         worker['current_company']='NXST'
         self.assertEqual(worker_activity('research_notebooks_21',worker,True,True,self.now,company_ids=['TME','PDD'])[0],'waiting')
+
+    def test_registered_idle_service_gets_bounded_scheduled_wait(self):
+        from research_sync import scheduled_activity
+        now=self.now.timestamp()
+        worker={'heartbeat':(self.now-timedelta(minutes=6)).isoformat(),'status':'checkpointed'}
+        self.assertEqual(scheduled_activity(worker,True,None,600,now)[0],'waiting')
+        self.assertIsNone(scheduled_activity(worker,False,None,600,now))
+        self.assertIsNone(scheduled_activity(worker,True,123,600,now))
+        worker['heartbeat']=(self.now-timedelta(minutes=25)).isoformat()
+        self.assertIsNone(scheduled_activity(worker,True,None,600,now))
+        self.assertIsNone(scheduled_activity({},True,None,600,now))
