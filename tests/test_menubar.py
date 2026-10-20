@@ -24,7 +24,7 @@ class MenuTests(unittest.TestCase):
             items=menubar.JobTrackerApp._render_job(None,self.job(path),0)
             self.assertEqual(len(items),1)
             row=items[0]
-            self.assertIn('120/165 passes saved',row.title)
+            self.assertEqual(row.title,'Claude backfill · 120/165 passes saved')
             children=list(row.keys())
             text='\n'.join(children)
             self.assertNotIn('120',text)

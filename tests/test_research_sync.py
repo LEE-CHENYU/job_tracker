@@ -10,7 +10,7 @@ class ResearchSyncTests(unittest.TestCase):
         job = {'title':'Codex redo', 'status':'needs_review',
                'progress':{'current':49,'total':49,'unit':'responses saved'}}
         text = job_heading(job)
-        self.assertIn('needs review', text)
+        self.assertEqual(text, 'Codex redo · 49/49 responses saved')
         self.assertIn('49/49 responses saved', text)
         self.assertNotIn('100%', text)
     def test_saved_results_do_not_imply_complete(self):

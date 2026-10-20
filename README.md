@@ -260,15 +260,14 @@ the preserved plist only when deliberately resuming those monitors.
 Validation: `python3 -m unittest discover -s tests -v`.
 
 Display correction: the menu-bar label stays compact (`Jobs 8`, meaning eight
-current tracked workflows, not eight running workers). Dropdown headings include
-explicit status and progress units. A 49/49 saved-response count is labelled
-`needs review`, never 100% complete. Error markers remain visible in the compact
+current tracked workflows, not eight running workers). Section headings show status; job rows contain only the name and progress units.
+A 49/49 saved-response count is never relabelled 100% complete. Error markers remain visible in the compact
 label. Status is derived from saved receipts/queues; worker execution remains
 unverified unless a separate live worker check establishes it.
 
 ## Research worker health
 
-Research rows show WORKING / WAITING / STALLED / BLOCKED / PAUSED alongside the saved research gate and counts. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. Missing workers are stalled; scheduled launches may clear this on the next interval. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.
+Research status sections show Working / Waiting / Stalled / Blocked / Paused. Each row shows its name and counts; the full saved research gate remains in details. Health uses the matching queue worker command, PID and heartbeat, not the tracker refresh timestamp. A heartbeat older than 30 minutes is flagged stalled (including potentially long calls requiring investigation). Other queues waiting behind a live coordinator remain visibly waiting. Missing workers are stalled; scheduled launches may clear this on the next interval. Research completion remains separately verified. Stalls add `!` to the Jobs menu title.
 
 ## Automatic recovery watchdog
 
@@ -281,3 +280,5 @@ The watchdog lock prevents overlapping supervisors. The normal queue scheduler s
 ## Status sections and timed refresh
 
 The menu groups jobs by current execution status (stalled, failed, blocked, working, waiting), falling back to workflow status (needs review, queued, completed). It uses dot separators, no dash placeholders or horizontal separator rows. Hyphens inside names remain intact. The menu redraws every 30 seconds and shows its refresh time; research snapshots refresh every 60 seconds through the installed launchd service. Display refresh time is not source freshness or proof of job progress. Native-report, audio-integrity, transcription and content-QC completion remain distinct.
+
+Per-item status text and status icons are omitted; status is shown once in the section heading.

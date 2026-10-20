@@ -26,7 +26,6 @@ class WorkerActivityTests(unittest.TestCase):
     def test_bad_heartbeat_not_live(self):
         self.worker['heartbeat']='garbage'
         self.assertEqual(self.activity()[0],'stalled')
-    def test_heading_exposes_stall_and_preserves_review_gate(self):
+    def test_heading_leaves_status_to_section(self):
         text=job_heading({'title':'Codex','status':'needs_review','telemetry':{'execution_status':'stalled'}})
-        self.assertIn('STALLED',text)
-        self.assertIn('needs review',text)
+        self.assertEqual(text,'Codex')

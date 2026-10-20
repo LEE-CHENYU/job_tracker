@@ -228,10 +228,7 @@ class JobTrackerApp(rumps.App):
     def _render_job(self, job, idx):
         """One root row; short context and actions live in its own submenu."""
         status = job.get("status", "unknown")
-        emoji = STATUS_EMOJI.get(status, "⚪️")
-        activity = (job.get("telemetry") or {}).get("execution_status")
-        emoji = {"stalled":"🔴", "working":"🟢", "waiting":"🔵", "blocked":"🟠", "paused":"⏸"}.get(activity, emoji)
-        row = rumps.MenuItem(f"{emoji} {job_heading(job)}")
+        row = rumps.MenuItem(job_heading(job))
         telemetry = job.get("telemetry") or {}
 
         # Only outstanding counts; completed progress is already in the heading.
