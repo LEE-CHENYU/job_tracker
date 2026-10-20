@@ -237,7 +237,7 @@ MIT
 `research_sync.py` reads the stock journal's notebook queue, 21-company creation
 plan, Claude backfill queue, Codex redo outputs, specialist result files and
 20-company review registers. It updates eight aggregate/current-job records
-under `state/` every two minutes via `com.clawd.job-tracker.research-sync`.
+under `state/` every minute via `com.clawd.job-tracker.research-sync`.
 It does not execute research or call NotebookLM. Source paths and source
 modification dates are retained in telemetry; refreshed display time is not
 evidence freshness. Missing sources produce an explicit sync error.
@@ -277,3 +277,7 @@ Research rows show WORKING / WAITING / STALLED / BLOCKED / PAUSED alongside the 
 Recovery delay doubles from 60 seconds up to one hour (actual checks occur on the two-minute cadence). The original job is unloaded during recovery so its own timer cannot bypass backoff. A bounded unauthenticated connectivity probe precedes reloading the original plist; HTTP errors still establish transport reachability, not model availability. Repeated provider failures can therefore require later recovery cycles. Explicit disabled controls prevent automatic relaunch. State, archived checkpoints and recovery logs live under `~/Library/Logs/research-watchdog/`. The tracker shows BLOCKED / BACKOFF during recovery; research completion counts are unchanged.
 
 The watchdog lock prevents overlapping supervisors. The normal queue scheduler still handles ordinary invocation completion. Disabling an in-flight worker remains an explicit queue stop operation; the watchdog only respects the disabled flag for subsequent recovery. Installation: bootstrap `contrib/com.clawd.research-watchdog.plist` into the user launchd domain after copying it to `~/Library/LaunchAgents/`.
+
+## Status sections and timed refresh
+
+The menu groups jobs by current execution status (stalled, failed, blocked, working, waiting), falling back to workflow status (needs review, queued, completed). It uses dot separators, no dash placeholders or horizontal separator rows. Hyphens inside names remain intact. The menu redraws every 30 seconds and shows its refresh time; research snapshots refresh every 60 seconds through the installed launchd service. Display refresh time is not source freshness or proof of job progress. Native-report, audio-integrity, transcription and content-QC completion remain distinct.

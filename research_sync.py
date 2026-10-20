@@ -1,5 +1,6 @@
 """Read-only research adapters. Refresh tracker snapshots; never launch model jobs."""
 import json
+import re
 import subprocess
 import os
 from pathlib import Path
@@ -97,12 +98,13 @@ def job_heading(job):
     status = job.get('status', 'unknown').replace('_', ' ')
     activity = (job.get('telemetry') or {}).get('execution_status')
     if activity in {'working','waiting','stalled','blocked','paused'}:
-        label = {'working':'WORKING','waiting':'WAITING — worker on other queue','stalled':'STALLED','blocked':'BLOCKED / BACKOFF','paused':'PAUSED'}[activity]
+        label = {'working':'WORKING','waiting':'WAITING · worker on other queue','stalled':'STALLED','blocked':'BLOCKED / BACKOFF','paused':'PAUSED'}[activity]
         status = label + ' · ' + status
     progress = job.get('progress') or {}
     current, total = progress.get('current'), progress.get('total')
-    count = f" — {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
-    return f"{job.get('title', job.get('id', '?'))} — {status}{count}"
+    count = f" · {current}/{total} {progress.get('unit', 'items')}" if current is not None and total else ''
+    title = re.sub(r"\s+[—–-]\s+", " · ", job.get("title", job.get("id", "Unknown job")))
+    return f"{title} · {status}{count}"
 
 
 def workflow_status(results, total, verified):

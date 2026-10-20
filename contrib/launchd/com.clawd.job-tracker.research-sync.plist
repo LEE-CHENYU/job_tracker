@@ -16,7 +16,7 @@
 	<key>StandardOutPath</key>
 	<string>/tmp/job_tracker_research_sync.log</string>
 	<key>StartInterval</key>
-	<integer>120</integer>
+	<integer>60</integer>
 	<key>WorkingDirectory</key>
 	<string>/Users/lichenyu/job_tracker</string>
 </dict>

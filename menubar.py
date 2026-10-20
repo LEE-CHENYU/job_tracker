@@ -50,7 +50,7 @@ def _parse_iso(s):
 
 def _human_eta(remaining, rate_per_sec):
     if not rate_per_sec or rate_per_sec <= 0:
-        return "—"
+        return "Not available"
     sec = remaining / rate_per_sec
     if sec < 60:
         return f"{sec:.0f}s"
@@ -63,7 +63,7 @@ def _human_eta(remaining, rate_per_sec):
 
 def _format_age(ts):
     if ts is None:
-        return "—"
+        return "Not available"
     delta_sec = (datetime.now(tz=timezone.utc) - ts).total_seconds()
     if delta_sec < 60:
         return f"{delta_sec:.0f}s ago"
@@ -173,7 +173,8 @@ class JobTrackerApp(rumps.App):
     def __init__(self):
         super().__init__(DEFAULT_TITLE, title=DEFAULT_TITLE, quit_button=None)
         self.show_all = False
-        rumps.Timer(self._auto_refresh, REFRESH_SEC).start()
+        self._refresh_timer = rumps.Timer(self._auto_refresh, REFRESH_SEC)
+        self._refresh_timer.start()
         self._rebuild()
 
     def _rebuild(self):
@@ -202,10 +203,21 @@ class JobTrackerApp(rumps.App):
         if not visible_jobs:
             items.append(rumps.MenuItem("(no active jobs)"))
         else:
-            for i, j in enumerate(visible_jobs):
-                items.extend(self._render_job(j, i))
+            sections = {}
+            for job in visible_jobs:
+                activity = (job.get("telemetry") or {}).get("execution_status")
+                key = activity if activity in {"working", "waiting", "blocked", "stalled", "paused"} else job.get("status", "unknown")
+                key = {"running": "working", "done": "completed", "error": "failed"}.get(key, key)
+                sections.setdefault(key, []).append(job)
+            order = ["stalled", "failed", "blocked", "working", "waiting", "needs_review", "queued", "paused", "completed", "stopped", "stale"]
+            for key in sorted(sections, key=lambda k: (order.index(k) if k in order else len(order), k)):
+                jobs = sections[key]
+                items.append(rumps.MenuItem(f"{key.replace('_', ' ').capitalize()} ({len(jobs)})"))
+                for i, job in enumerate(jobs):
+                    items.extend(self._render_job(job, i))
 
-        items.append(rumps.separator)
+        stamp = datetime.now().strftime("%H:%M:%S")
+        items.append(rumps.MenuItem(f"Menu refreshed {stamp} · auto {REFRESH_SEC}s · data every 60s"))
         toggle_label = (f"Show all ({hidden_n} hidden)" if not self.show_all
                         else "Show current work")
         items.append(rumps.MenuItem(toggle_label, callback=self._on_toggle_filter))
@@ -255,7 +267,6 @@ class JobTrackerApp(rumps.App):
         elif telemetry.get("execution_status") == "not_verified_running":
             row.add(rumps.MenuItem("Saved artifacts; worker activity unverified"))
 
-        row.add(rumps.separator)
         state_path = job.get("_path")
         if state_path and Path(state_path).exists():
             row.add(rumps.MenuItem("Open details", callback=_open_details_cb(state_path)))

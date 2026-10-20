@@ -26,4 +26,15 @@ class ResearchSyncTests(unittest.TestCase):
         for status in ['done','stale','superseded']:
             self.assertFalse(visible_by_default(status))
 
+
+    def test_heading_uses_dots_preserving_word_hyphens(self):
+        job={'title':'Screening — follow-through - batch','status':'queued',
+             'progress':{'current':1,'total':2,'unit':'results'},
+             'telemetry':{'execution_status':'waiting'}}
+        text=job_heading(job)
+        self.assertNotIn('—',text)
+        self.assertNotIn(' - ',text)
+        self.assertIn('follow-through',text)
+        self.assertIn('1/2 results',text)
+
 if __name__=='__main__': unittest.main()
