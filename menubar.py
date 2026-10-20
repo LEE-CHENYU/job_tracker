@@ -27,7 +27,7 @@ DEFAULT_TITLE = "Jobs"
 PURPOSE_WRAP_WIDTH = 70
 DETAIL_WRAP_WIDTH = 90  # detail / telemetry lines (longer than purpose)
 
-PROJECT_DOTS = {"screening": "🟣", "notebooklm": "🔵"}
+PROJECT_DOTS = {"screening": "🔴", "notebooklm": "🔵"}
 
 
 def project_dot(job):

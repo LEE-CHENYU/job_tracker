@@ -79,10 +79,10 @@ class MenuTests(unittest.TestCase):
         for status in ['running','blocked','needs_review','queued']:
             screen={'id':'research_screen_claude','title':'Screening · Claude','status':status}
             audio={'id':'research_transcription','title':'Notebook audio · Whisper','status':status}
-            self.assertTrue(menubar.JobTrackerApp._render_job(None,screen,0)[0].title.startswith('🟣 '))
+            self.assertTrue(menubar.JobTrackerApp._render_job(None,screen,0)[0].title.startswith('🔴 '))
             self.assertTrue(menubar.JobTrackerApp._render_job(None,audio,0)[0].title.startswith('🔵 '))
         for name in ['research_audio_qc','research_notebooks_21','research_notebook_030000_KS']:
             self.assertEqual(menubar.project_dot({'id':name}), '🔵')
-        self.assertEqual(menubar.project_dot({'id':'research_specialists_paired'}), '🟣')
+        self.assertEqual(menubar.project_dot({'id':'research_specialists_paired'}), '🔴')
 
 if __name__=='__main__': unittest.main()
