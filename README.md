@@ -281,4 +281,4 @@ The watchdog lock prevents overlapping supervisors. The normal queue scheduler s
 
 The menu groups jobs by current execution status (stalled, failed, blocked, working, waiting), falling back to workflow status (needs review, queued, completed). It uses dot separators, no dash placeholders or horizontal separator rows. Hyphens inside names remain intact. The menu redraws every 30 seconds and shows its refresh time; research snapshots refresh every 60 seconds through the installed launchd service. Display refresh time is not source freshness or proof of job progress. Native-report, audio-integrity, transcription and content-QC completion remain distinct.
 
-Per-item status text and status icons are omitted; status is shown once in the section heading.
+Per-item status text is omitted; status is shown once in the section heading. Dots identify the project: purple for Screening and blue for NotebookLM (including audio QC and transcription). Other/unclassified projects use a neutral white dot. Colors do not change with job status. An explicit `project` field takes precedence; existing job IDs/titles supply backward-compatible classification.

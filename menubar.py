@@ -27,12 +27,21 @@ DEFAULT_TITLE = "Jobs"
 PURPOSE_WRAP_WIDTH = 70
 DETAIL_WRAP_WIDTH = 90  # detail / telemetry lines (longer than purpose)
 
-STATUS_EMOJI = {
-    "running": "🟢", "paused": "🟡",
-    "done": "✅", "failed": "🔴", "error": "🔴",
-    "stopped": "⚪️", "queued": "🔵", "blocked": "🟠",
-    "needs_review": "🟡", "stale": "⚪️",
-}
+PROJECT_DOTS = {"screening": "🟣", "notebooklm": "🔵"}
+
+
+def project_dot(job):
+    """Project identity only; execution/workflow status never changes the color."""
+    project = str(job.get("project") or "").lower()
+    if not project:
+        job_id = str(job.get("id") or "")
+        title = str(job.get("title") or "").lower()
+        if job_id.startswith("research_notebook") or job_id in {"research_audio_qc", "research_transcription"} or title.startswith("notebook"):
+            project = "notebooklm"
+        elif job_id.startswith(("research_screen", "research_specialist", "research_either_check", "research_intake", "research_previous_batch")) or title.startswith("screening"):
+            project = "screening"
+    return PROJECT_DOTS.get(project, "⚪")
+
 
 from research_sync import visible_by_default, compact_title, job_heading
 
@@ -228,7 +237,7 @@ class JobTrackerApp(rumps.App):
     def _render_job(self, job, idx):
         """One root row; short context and actions live in its own submenu."""
         status = job.get("status", "unknown")
-        row = rumps.MenuItem(job_heading(job))
+        row = rumps.MenuItem(f"{project_dot(job)} {job_heading(job)}")
         telemetry = job.get("telemetry") or {}
 
         # Only outstanding counts; completed progress is already in the heading.

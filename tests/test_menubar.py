@@ -24,7 +24,7 @@ class MenuTests(unittest.TestCase):
             items=menubar.JobTrackerApp._render_job(None,self.job(path),0)
             self.assertEqual(len(items),1)
             row=items[0]
-            self.assertEqual(row.title,'Claude backfill · 120/165 passes saved')
+            self.assertEqual(row.title,'⚪ Claude backfill · 120/165 passes saved')
             children=list(row.keys())
             text='\n'.join(children)
             self.assertNotIn('120',text)
@@ -73,5 +73,16 @@ class MenuTests(unittest.TestCase):
     def test_unknown_display_values_do_not_use_dash_placeholders(self):
         self.assertEqual(menubar._human_eta(10,0),'Not available')
         self.assertEqual(menubar._format_age(None),'Not available')
+
+
+    def test_project_color_is_stable_across_statuses(self):
+        for status in ['running','blocked','needs_review','queued']:
+            screen={'id':'research_screen_claude','title':'Screening · Claude','status':status}
+            audio={'id':'research_transcription','title':'Notebook audio · Whisper','status':status}
+            self.assertTrue(menubar.JobTrackerApp._render_job(None,screen,0)[0].title.startswith('🟣 '))
+            self.assertTrue(menubar.JobTrackerApp._render_job(None,audio,0)[0].title.startswith('🔵 '))
+        for name in ['research_audio_qc','research_notebooks_21','research_notebook_030000_KS']:
+            self.assertEqual(menubar.project_dot({'id':name}), '🔵')
+        self.assertEqual(menubar.project_dot({'id':'research_specialists_paired'}), '🟣')
 
 if __name__=='__main__': unittest.main()
