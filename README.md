@@ -313,8 +313,7 @@ status sections. Waiting notebooks collapse into counted submenus; notebooks
 with all planned audio and reports generated have a separate QC-backlog submenu.
 Screening and audio-review backlog are also collapsed within their status section.
 Counts denote tracker entries, not running workers or unique companies. Opening a
-group exposes the original progress and job actions. Show all restores individual
-rows. Notebook company names are shortened for display only; canonical titles,
+group exposes the original progress and job actions. Show all reveals hidden jobs while preserving compact backlog groups. Notebook company names are shortened for display only; canonical titles,
 source JSON, task status and acceptance requirements are unchanged. Project colors
 and automatic refresh are preserved. This presentation change does not stop,
 start, remove or mark research jobs complete.

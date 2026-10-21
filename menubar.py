@@ -260,7 +260,7 @@ class JobTrackerApp(rumps.App):
                 items.append(rumps.MenuItem(f"{key.replace('_', ' ').capitalize()} ({len(jobs)})"))
                 groups = {}
                 for i, job in enumerate(jobs):
-                    label = None if self.show_all else backlog_group(job, key)
+                    label = backlog_group(job, key)
                     if label:
                         groups.setdefault(label, []).append(job)
                     else:

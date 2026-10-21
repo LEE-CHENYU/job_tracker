@@ -116,3 +116,20 @@ class BacklogTests(unittest.TestCase):
         self.assertIn('0/1 reports',row.title)
         self.assertLess(len(row.title),90)
         self.assertEqual(job['title'],title)
+
+    def test_show_all_reveals_hidden_jobs_without_expanding_backlog(self):
+        jobs=[{'id':'research_notebook_pending','title':'NotebookLM — Pending',
+               'status':'queued','telemetry':{'execution_status':'waiting'}},
+              {'id':'research_notebook_generated','title':'NotebookLM — Generated',
+               'status':'queued','telemetry':{'execution_status':'waiting',
+                 'output_progress':{'audio_done':1,'audio_total':1,'reports_generated':1,'report_total':1}}},
+              {'id':'archived','title':'Archived job','status':'done'}]
+        app=SimpleNamespace(show_all=True,_on_toggle_filter=lambda _:None,_on_refresh=lambda _:None,
+            _render_job=lambda j,i:menubar.JobTrackerApp._render_job(None,j,i))
+        with patch.object(menubar,'_read_jobs',return_value=jobs):
+            items=menubar.JobTrackerApp._build_items(app)
+        titles=[item.title for item in items]
+        self.assertIn('🔵 Waiting notebooks (1)',titles)
+        self.assertIn('🔵 Generated · QC backlog (1)',titles)
+        self.assertFalse(any('NotebookLM · Pending' in t or 'NotebookLM · Generated' in t for t in titles))
+        self.assertTrue(any('Archived job' in t for t in titles))
