@@ -94,6 +94,17 @@ def execution_telemetry(job_id, company_ids=None):
     state, detail = worker_activity(job_id,worker,control.get('enabled',True),alive,company_ids=company_ids)
     name = 'notebook-queue' if family == 'notebooklm' else 'screening-queue'
     if not alive and state == 'stalled' and control.get('enabled', True):
+        # Daily single-company dispatcher mode (DD-030): the legacy queue service is
+        # deliberately unloaded, so an absent legacy worker is 'paused', not 'stalled'.
+        try:
+            daily = read(ROOT / 'docs' / family / 'daily' / 'control.json') if (ROOT / 'docs' / family / 'daily' / 'control.json').exists() else {}
+            listing0 = subprocess.run(['launchctl','list'],capture_output=True,text=True,timeout=2).stdout
+            legacy_loaded = any(line.split() and line.split()[-1] == 'com.clawd.' + name for line in listing0.splitlines())
+            if daily.get('enabled') and daily.get('old_schedulers_must_remain_unloaded') and not legacy_loaded:
+                return {'execution_status':'paused','execution_detail':'Legacy queue unloaded; daily dispatcher owns dispatch (DD-030)',
+                        'worker_pid':worker.get('pid'),'worker_heartbeat':worker.get('heartbeat')}
+        except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+            pass
         try:
             label = 'com.clawd.' + name
             listing = subprocess.run(['launchctl','list'],capture_output=True,text=True,timeout=2)
@@ -226,6 +237,8 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
     data['telemetry']['source_modified_at'] = datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat()
     if status != 'done':
         data['telemetry'].update(execution_telemetry(job_id, data['telemetry'].get('companies')))
+        if data['telemetry'].get('execution_status') == 'paused' and status == 'queued':
+            data['status'] = 'paused'  # hidden by default; not an alert
     else:
         data['telemetry']['execution_status'] = 'complete'
     tmp = path.with_name(path.name + f'.{os.getpid()}.tmp')
@@ -265,10 +278,10 @@ def sync_notebooks():
         dims,detail=lifecycle([row])
         current,total=dims['complete'],dims['total']
         save('research_notebook_' + row['ticker'].replace('.', '_'),
-             'NotebookLM — ' + row['company'], 'done' if current else 'queued',
+             'NotebookLM — ' + row.get('company', row.get('name', row['ticker'])), 'done' if current else 'queued',
              current, total, 'complete notebooks', source,
-             [detail, row['status'], row.get('blocking_reason',''), row['notebook_url']],
-             {'stage':row['status'], 'notebook_id':row['notebook_id'], 'completion_dimensions':dims, 'output_progress':notebook_output_progress([row])})
+             [detail, row['status'], row.get('blocking_reason',''), row.get('notebook_url','')],
+             {'stage':row['status'], 'notebook_id':row.get('notebook_id'), 'completion_dimensions':dims, 'output_progress':notebook_output_progress([row])})
 
 
 def sync_audio_qc():
