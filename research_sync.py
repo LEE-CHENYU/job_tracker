@@ -130,9 +130,14 @@ def visible_by_default(status):
 
 
 def compact_title(jobs):
-    active = sum(visible_by_default(j.get('status')) for j in jobs)
+    active = sum(
+        j.get('status') not in {'done', 'failed', 'error', 'paused', 'superseded'}
+        and ((j.get('telemetry') or {}).get('execution_status') == 'working'
+             or (j.get('status') == 'running'
+                 and not (j.get('telemetry') or {}).get('execution_status')))
+        for j in jobs)
     alert = any(j.get('status') in {'failed','error'} or (j.get('telemetry') or {}).get('execution_status') == 'stalled' for j in jobs)
-    return ('Jobs ' + str(active) if active else 'Jobs') + ('!' if alert else '')
+    return f'Jobs {active} active' + ('!' if alert else '')
 
 
 def with_display_progress(job):
@@ -222,6 +227,17 @@ def read(path):
     return json.loads(path.read_text())
 
 
+def coordinator_closure(job_id):
+    path = ROOT / 'docs/research/coordinator_closures.json'
+    try:
+        entry = read(path).get('closures', {}).get(job_id)
+    except (OSError, ValueError):
+        return None
+    if entry and entry.get('status') in {'done', 'paused'} and entry.get('reason') and entry.get('decided'):
+        return entry
+    return None
+
+
 def save(job_id, title, status, current, total, unit, source, details, telemetry=None):
     path = HERE / 'state' / (job_id + '.json')
     now = datetime.now(timezone.utc).isoformat()
@@ -233,6 +249,13 @@ def save(job_id, title, status, current, total, unit, source, details, telemetry
                 log_path=str(source), details=details,
                 tags=['research', 'managed-research-sync'],
                 telemetry=telemetry or {})
+    closure = coordinator_closure(job_id)
+    if closure:
+        # Coordinator decision recorded in the repo (docs/research/coordinator_closures.json).
+        data['status'] = closure['status']
+        data['details'] = [f"Coordinator {closure['status']}: {closure['reason']} ({closure['decided']})"] + list(details)
+        data['telemetry']['coordinator_closure'] = closure
+        status = closure['status']
     data['telemetry']['source_path'] = str(source)
     data['telemetry']['source_modified_at'] = datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat()
     if status != 'done':
@@ -256,7 +279,7 @@ def lifecycle(rows):
                               available(ROOT/'docs/notebooklm/audio_qc/queue.json'))
     detail=' | '.join(f"{label} {counts[key]}/{counts['total']}" for label,key in
                     [('Audio integrity','audio_integrity'),('Transcripts','transcripts'),
-                     ('Content accepted','content_accepted'),('Native reports','native_reports')])
+                     ('QC performed','qc_performed'),('Complete','complete')])
     return counts,detail
 
 

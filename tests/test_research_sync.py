@@ -22,8 +22,8 @@ class ResearchSyncTests(unittest.TestCase):
         self.assertEqual(calls,['audio','notebooks','screening','central_qc'])
     def test_menu_title_stays_short_and_keeps_errors_visible(self):
         jobs = [{'status':'queued'}] * 8
-        self.assertEqual(compact_title(jobs), 'Jobs 8')
-        self.assertEqual(compact_title(jobs + [{'status':'error'}]), 'Jobs 9!')
+        self.assertEqual(compact_title(jobs), 'Jobs 0 active')
+        self.assertEqual(compact_title(jobs + [{'status':'error'}]), 'Jobs 0 active!')
     def test_review_heading_never_implies_completion(self):
         job = {'title':'Codex redo', 'status':'needs_review',
                'progress':{'current':49,'total':49,'unit':'responses saved'}}
@@ -78,3 +78,29 @@ class ResearchSyncTests(unittest.TestCase):
             self.assertIn('0/2 reviewed companies',job_heading(with_display_progress(job)))
 
 if __name__=='__main__': unittest.main()
+
+
+def test_active_title_excludes_paused_backlog_and_completed_workers():
+    jobs = [{'status': 'queued', 'telemetry': {'execution_status': 'paused'}}] * 51
+    jobs += [{'status': 'running', 'telemetry': {'execution_status': 'working'}},
+             {'status': 'done', 'telemetry': {'execution_status': 'waiting'}},
+             {'status': 'needs_review'}]
+    assert compact_title(jobs) == 'Jobs 1 active'
+
+
+def test_coordinator_closure_overrides_derived_status(tmp_path, monkeypatch):
+    import json, research_sync as rs
+    repo = tmp_path / 'repo'; (repo / 'docs/research').mkdir(parents=True)
+    (repo / 'docs/research/coordinator_closures.json').write_text(json.dumps({'closures': {
+        'job_x': {'status': 'done', 'reason': 'covered elsewhere', 'decided': 'user'},
+        'job_bad': {'status': 'done', 'reason': 'no decided field'}}}))
+    monkeypatch.setattr(rs, 'ROOT', repo)
+    monkeypatch.setattr(rs, 'HERE', tmp_path); (tmp_path / 'state').mkdir()
+    src = tmp_path / 'src.json'; src.write_text('{}')
+    monkeypatch.setattr(rs, 'execution_telemetry', lambda *a, **k: {})
+    rs.save('job_x', 'X', 'needs_review', 1, 2, 'u', src, ['d'])
+    rs.save('job_bad', 'B', 'needs_review', 1, 2, 'u', src, ['d'])
+    x = json.loads((tmp_path / 'state/job_x.json').read_text())
+    b = json.loads((tmp_path / 'state/job_bad.json').read_text())
+    assert x['status'] == 'done' and x['details'][0].startswith('Coordinator done: covered elsewhere')
+    assert b['status'] == 'needs_review'

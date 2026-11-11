@@ -317,3 +317,7 @@ group exposes the original progress and job actions. Show all reveals hidden job
 source JSON, task status and acceptance requirements are unchanged. Project colors
 and automatic refresh are preserved. This presentation change does not stop,
 start, remove or mark research jobs complete.
+
+### Active count (2026-10-23)
+
+The menu title counts actively working entries only. Queued, paused and review backlog remain in grouped menus and do not inflate that count. The alert marker still exposes failures/stalls; no acceptance state is inferred from a dead worker.
