@@ -279,9 +279,20 @@ def refresh() -> dict:
 
 
 # ---------------------------------------------------------------- reading
-ICON = {"error": "✗", "blocked": "⊘", "running": "▶", "queued": "…", "needs_review": "?", "paused": "‖",
+ICON = {"error": "✗", "stalled": "⧗", "blocked": "⊘", "running": "▶", "queued": "…", "needs_review": "?", "paused": "‖",
         "done": "✓", "failed": "✗"}
-ORDER = {"error": 0, "blocked": 1, "needs_review": 2, "running": 3, "queued": 4, "paused": 5, "done": 6}
+ORDER = {"error": 0, "stalled": 0, "blocked": 1, "needs_review": 2, "running": 3, "queued": 4, "paused": 5, "done": 6}
+
+
+STALL_SECONDS = 48 * 3600  # in-progress job whose state file has not changed for 48 h
+
+
+def effective_status(d: dict, now: float) -> str:
+    """Show running/queued jobs that stopped updating as stalled instead of in progress."""
+    st = d.get("status")
+    if st in ("running", "queued") and now - d.get("_mtime", now) > STALL_SECONDS:
+        return "stalled"
+    return st
 
 
 def _load_all() -> list[dict]:
@@ -323,14 +334,17 @@ def cmd_status(show_all: bool) -> None:
         for d in ds:
             if show_all or d.get("status") not in ("done", "paused"):
                 print(_line(d))
-    act = [d for d in jobs if d.get("status") in ("running", "queued", "blocked", "needs_review", "error")
-           or (d.get("status") == "failed" and now - d["_mtime"] < 86400)]
-    act.sort(key=lambda d: (ORDER.get(d.get("status"), 9), -d["_mtime"]))
+    for d in jobs:
+        d["_shown"] = effective_status(d, now)
+    act = [d for d in jobs if d["_shown"] in ("running", "queued", "stalled", "blocked", "needs_review", "error")
+           or (d["_shown"] == "failed" and now - d["_mtime"] < 86400)]
+    act.sort(key=lambda d: (ORDER.get(d["_shown"], 9), -d["_mtime"]))
     print(f"\n== Tracked jobs needing attention or in progress ({len(act)}; failures from last 24h)")
     for d in act[: (None if show_all else 25)]:
         p = d.get("progress") or {}
         prog = f"[{p.get('current')}/{p.get('total')}] " if isinstance(p, dict) and p.get("total") else ""
-        print(f"  {ICON.get(d.get('status'), '·')} {prog}{d.get('title', d['id'])[:70]}  ({_ago(now - d['_mtime'])} ago)")
+        tag = "  STALLED: no update" if d["_shown"] == "stalled" else ""
+        print(f"  {ICON.get(d['_shown'], '·')} {prog}{d.get('title', d['id'])[:70]}  ({_ago(now - d['_mtime'])} ago){tag}")
     if not show_all and len(act) > 25:
         print(f"  … {len(act) - 25} more: `jt all`")
 

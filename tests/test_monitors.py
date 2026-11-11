@@ -88,3 +88,16 @@ def test_slurm_status():
     assert m.slurm_status({"state": "RUNNING", "reason": "node1"}) == "running"
     assert m.slurm_status({"state": "PENDING", "reason": "(Priority)"}) == "queued"
     assert m.slurm_status({"state": "PENDING", "reason": "(DependencyNeverSatisfied)"}) == "blocked"
+
+
+def test_tracked_job_without_update_for_48h_is_stalled():
+    now = 1_000_000.0
+    assert m.effective_status({"status": "running", "_mtime": now - 49 * 3600}, now) == "stalled"
+    assert m.effective_status({"status": "queued", "_mtime": now - 49 * 3600}, now) == "stalled"
+
+
+def test_recent_or_terminal_jobs_keep_status():
+    now = 1_000_000.0
+    assert m.effective_status({"status": "running", "_mtime": now - 3600}, now) == "running"
+    assert m.effective_status({"status": "done", "_mtime": now - 99 * 3600}, now) == "done"
+    assert m.effective_status({"status": "needs_review", "_mtime": now - 99 * 3600}, now) == "needs_review"
