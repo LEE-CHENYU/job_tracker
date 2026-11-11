@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.clawd.job-tracker.version-align</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string><string>-c</string>
+    <string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"; echo "=== $(date '+%F %T')"; exec "$HOME/miniconda3/envs/python310/bin/python" "$HOME/job_tracker/version_align.py"</string>
+  </array>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/lichenyu/job_tracker/logs/version_align.log</string>
+  <key>StandardErrorPath</key><string>/Users/lichenyu/job_tracker/logs/version_align.log</string>
+</dict>
+</plist>
