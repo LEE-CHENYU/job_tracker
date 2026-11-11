@@ -33,20 +33,34 @@ STATE = HOME / "job_tracker" / "state" / "align.codex.json"
 BREW = "/opt/homebrew/Caskroom/codex/*/bin/codex"
 DAEMON = str(HOME / ".codex/packages/app-server-daemon/releases/*/bin/codex")
 PROBE_TIMEOUT = 20
+JAIL = HOME / "personal-network" / "codex_jail.sb"          # same jail hub/llm.py and profile_agy.py run codex in
+WORKDIR = HOME / ".cache" / "network-codex-empty"
 
 
 def vkey(v: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", v or "0"))
 
 
-def probe(path: str) -> str | None:
-    """Version string, or None if the binary hangs / fails."""
+def _version(cmd: list[str]) -> str | None:
     try:
-        r = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=PROBE_TIMEOUT)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=PROBE_TIMEOUT, stdin=subprocess.DEVNULL)
     except (subprocess.TimeoutExpired, OSError):
         return None
     m = re.search(r"(\d+\.\d+\.\d+)", r.stdout)
     return m.group(1) if r.returncode == 0 and m else None
+
+
+def probe(path: str) -> str | None:
+    """Version string, or None if the binary hangs / fails — plain AND inside the hub/network sandbox-exec jail.
+
+    Incident 2026-11-11: the Homebrew cask 0.167.1 answered `--version` plainly but hung inside the jail (its
+    com.apple.quarantine attribute: the Gatekeeper check never completes under sandbox-exec), so every hub/session
+    Codex call timed out after routing to it. The jail is how the pipelines run codex, so it is the probe that counts."""
+    v = _version([path, "--version"])
+    if v is None or not JAIL.exists():
+        return v
+    WORKDIR.mkdir(parents=True, exist_ok=True)
+    return _version(["sandbox-exec", "-f", str(JAIL), "-D", f"HOME={HOME}", "-D", f"WORKDIR={WORKDIR}", path, "--version"])
 
 
 def daemon_version() -> str | None:

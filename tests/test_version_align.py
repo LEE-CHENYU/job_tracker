@@ -40,3 +40,24 @@ def test_no_daemon_uses_newest_working():
 
 def test_version_key():
     assert va.vkey("0.167.10") > va.vkey("0.167.9")
+
+
+def test_probe_requires_jail(monkeypatch, tmp_path):
+    """2026-11-11: Homebrew cask answered `--version` plainly but hung inside the pipelines' sandbox-exec jail."""
+    jail = tmp_path / "jail.sb"; jail.write_text("(version 1)")
+    monkeypatch.setattr(va, "JAIL", jail)
+    monkeypatch.setattr(va, "WORKDIR", tmp_path / "wd")
+    calls = []
+
+    def fake(cmd):
+        calls.append(cmd)
+        return None if cmd[0] == "sandbox-exec" else "0.167.1"
+    monkeypatch.setattr(va, "_version", fake)
+    assert va.probe("/brew/codex") is None
+    assert calls[1][:3] == ["sandbox-exec", "-f", str(jail)] and calls[1][-2:] == ["/brew/codex", "--version"]
+
+
+def test_probe_without_jail_is_plain(monkeypatch, tmp_path):
+    monkeypatch.setattr(va, "JAIL", tmp_path / "missing.sb")
+    monkeypatch.setattr(va, "_version", lambda cmd: "0.167.1")
+    assert va.probe("/d/codex") == "0.167.1"
